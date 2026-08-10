@@ -1,0 +1,187 @@
+.shell {
+  width: 100%;
+  max-width: calc(800px + var(--rail) + var(--gutter) * 2);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+/* ------------------------------------------------------------------ *
+ * Top bar
+ * ------------------------------------------------------------------ */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in oklab, var(--bg) 82%, transparent);
+  backdrop-filter: saturate(160%) blur(12px);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.topbar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 56px;
+}
+
+.topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.topbar__mark {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.topbar__brand:hover .topbar__mark {
+  transform: rotate(45deg) scale(1.15);
+}
+
+.topbar__now {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  color: var(--text-faint);
+}
+
+.topbar__count {
+  flex: none;
+}
+
+.topbar__label {
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 560px) {
+  .topbar__label {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Hero
+ * ------------------------------------------------------------------ */
+
+.hero {
+  padding-top: clamp(56px, 11vw, 128px);
+  padding-bottom: clamp(32px, 6vw, 64px);
+  max-width: 640px;
+}
+
+.hero__eyebrow {
+  color: var(--text-faint);
+  margin-bottom: 18px;
+}
+
+.hero__title {
+  font-size: clamp(34px, 6.4vw, 60px);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+  margin-bottom: 22px;
+  text-wrap: balance;
+}
+
+.hero__accent {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.hero__lede {
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+/* ------------------------------------------------------------------ *
+ * Timeline
+ * ------------------------------------------------------------------ */
+
+.timeline {
+  position: relative;
+}
+
+/* The first section's rail should begin at its own node, not float up into
+   the hero. */
+.exp:first-of-type .exp__rail::before {
+  top: 11px;
+}
+
+.timeline__end {
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
+  align-items: center;
+  padding-bottom: clamp(40px, 7vw, 88px);
+}
+
+.timeline__endNode {
+  position: relative;
+  justify-self: center;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.timeline__endNode::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  translate: -50% 0;
+  width: 1px;
+  height: clamp(48px, 8vw, 104px);
+  background: linear-gradient(var(--line-soft), transparent);
+}
+
+.timeline__end p {
+  color: var(--text-faint);
+}
+
+@media (max-width: 880px) {
+  .timeline__end {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .timeline__endNode {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Footer
+ * ------------------------------------------------------------------ */
+
+.footer {
+  padding-block: 32px 56px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.footer code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  color: var(--text-dim);
+}

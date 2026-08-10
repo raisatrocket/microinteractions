@@ -1,0 +1,186 @@
+.exp {
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
+  padding-block: clamp(48px, 8vw, 104px);
+  /* Deep links land below the sticky header. */
+  scroll-margin-top: 76px;
+}
+
+.exp:first-of-type {
+  padding-top: clamp(24px, 4vw, 48px);
+}
+
+/* ------------------------------------------------------------------ *
+ * Timeline rail
+ * ------------------------------------------------------------------ */
+
+.exp__rail {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+/* The continuous line, drawn behind every section. */
+.exp__rail::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * clamp(48px, 8vw, 104px));
+  bottom: calc(-1 * clamp(48px, 8vw, 104px));
+  width: 1px;
+  background: var(--line-soft);
+}
+
+.exp__node {
+  position: relative;
+  z-index: 1;
+  margin-top: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  transition:
+    background 260ms ease,
+    border-color 260ms ease,
+    box-shadow 260ms ease,
+    transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.exp[data-active] .exp__node {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.25);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+@media (max-width: 880px) {
+  .exp {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .exp__rail {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Meta
+ * ------------------------------------------------------------------ */
+
+.exp__body {
+  min-width: 0;
+}
+
+.exp__meta {
+  max-width: 620px;
+  margin-bottom: 26px;
+}
+
+.exp__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+
+.exp__index {
+  color: var(--accent);
+}
+
+.exp__sep {
+  opacity: 0.4;
+}
+
+.exp__title {
+  font-size: clamp(24px, 3.4vw, 32px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.exp__title a {
+  color: var(--text);
+  text-decoration: none;
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0% 1px;
+  transition: background-size 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.exp__title a:hover {
+  background-size: 100% 1px;
+}
+
+.exp__blurb {
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.exp__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.exp__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  padding: 0;
+}
+
+.exp__tag {
+  padding: 3px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  color: var(--text-faint);
+  background: var(--panel);
+}
+
+/* ------------------------------------------------------------------ *
+ * Copy link
+ * ------------------------------------------------------------------ */
+
+.exp__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px 5px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: var(--panel);
+  transition:
+    color 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease;
+}
+
+.exp__copy:hover {
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.exp__copy[data-copied] {
+  color: var(--accent);
+  border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+  background: var(--accent-soft);
+}
+
+.exp__copy svg {
+  transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.exp__copy[data-copied] svg {
+  transform: rotate(-45deg) scale(1.08);
+}

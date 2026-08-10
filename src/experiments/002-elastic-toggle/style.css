@@ -1,0 +1,75 @@
+.elastic {
+  --velocity: 0;
+
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 56px;
+  background: var(--bg-elev);
+}
+
+/* ------------------------------------------------------------------ *
+ * Track
+ * ------------------------------------------------------------------ */
+
+.elastic__track {
+  position: relative;
+  width: 104px;
+  height: 58px;
+  padding: 6px;
+  border-radius: 999px;
+  background: #232329;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.35) inset,
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  transition: background var(--dur-3) var(--ease-out);
+}
+
+.elastic__track[data-on] {
+  background: color-mix(in oklab, var(--accent) 82%, black 6%);
+}
+
+.elastic__knob {
+  display: block;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff, #dcdce4);
+  box-shadow:
+    0 1px 1px rgba(255, 255, 255, 0.7) inset,
+    0 4px 10px -2px rgba(0, 0, 0, 0.5);
+  /* transform belongs to the spring */
+  will-change: transform;
+}
+
+/* ------------------------------------------------------------------ *
+ * Read-out
+ * ------------------------------------------------------------------ */
+
+.elastic__readout {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.elastic__meter {
+  width: 200px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+
+.elastic__meterFill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  transform: scaleX(var(--velocity));
+}
+
+.elastic__caption {
+  color: var(--text-faint);
+}

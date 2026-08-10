@@ -1,0 +1,123 @@
+.morph {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 32px;
+  background: var(--bg-elev);
+}
+
+/* ------------------------------------------------------------------ *
+ * Button
+ * ------------------------------------------------------------------ */
+
+.morph__button {
+  position: relative;
+  height: 52px;
+  border-radius: 999px;
+  overflow: hidden;
+  color: var(--accent-ink);
+  background: var(--accent);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.35) inset,
+    0 12px 30px -14px color-mix(in oklab, var(--accent) 70%, transparent);
+  transition:
+    width var(--dur-3) var(--ease-back),
+    background var(--dur-2) var(--ease-out),
+    color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-3) var(--ease-out),
+    transform var(--dur-1) var(--ease-out);
+}
+
+.morph__button:active[data-state='idle'] {
+  transform: scale(0.96);
+}
+
+/* While work is pending the button steps back: neutral surface, no glow. */
+.morph__button[data-state='pending'] {
+  background: var(--panel-hi);
+  color: var(--accent);
+  box-shadow:
+    0 0 0 1px var(--line) inset,
+    0 8px 24px -16px rgba(0, 0, 0, 0.9);
+}
+
+/* ------------------------------------------------------------------ *
+ * Layers — one per state, crossfaded in place
+ * ------------------------------------------------------------------ */
+
+.morph__layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+
+  opacity: 0;
+  scale: 0.86;
+  pointer-events: none;
+  transition:
+    opacity var(--dur-2) var(--ease-out),
+    scale var(--dur-3) var(--ease-back);
+}
+
+.morph__button[data-state='idle'] .morph__layer[data-layer='idle'],
+.morph__button[data-state='pending'] .morph__layer[data-layer='pending'],
+.morph__button[data-state='done'] .morph__layer[data-layer='done'] {
+  opacity: 1;
+  scale: 1;
+}
+
+/* ------------------------------------------------------------------ *
+ * Spinner
+ * ------------------------------------------------------------------ */
+
+.morph__spinner {
+  animation: morph-spin calc(760ms * var(--mi-t)) linear infinite;
+}
+
+@keyframes morph-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Checkmark
+ *
+ * The animation is declared only under [data-state='done'], so it starts
+ * fresh each time the button reaches that state.
+ * ------------------------------------------------------------------ */
+
+.morph__check {
+  stroke-dasharray: 20;
+  stroke-dashoffset: 20;
+}
+
+.morph__button[data-state='done'] .morph__check {
+  animation: morph-draw var(--dur-3) var(--ease-out) calc(60ms * var(--mi-t))
+    forwards;
+}
+
+@keyframes morph-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Caption
+ * ------------------------------------------------------------------ */
+
+.morph__caption {
+  color: var(--text-faint);
+  transition: color var(--dur-2) ease;
+}
+
+.morph:has(.morph__button[data-state='done']) .morph__caption {
+  color: var(--accent);
+}
