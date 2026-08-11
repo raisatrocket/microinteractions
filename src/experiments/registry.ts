@@ -23,7 +23,7 @@ export const experiments: Experiment[] = [
     slug: 'inflated-letters',
     title: 'Inflated Letters',
     blurb:
-      'Six letters spelling BUBBLE, each one a soft, draggable sphere that pushes back against its neighbors and the walls of a resizable container. Shrink the box and they compress into each other rather than just rearranging.',
+      'Six letters spelling BUBBLE, each one an inflated, draggable glyph in its own bright color, pushing back against its neighbors and the walls of a resizable container. Shrink the box and they compress into each other rather than just rearranging.',
     tags: ['physics', 'drag', 'collision'],
     date: '2026-08-14',
     Component: lazy(() => import('./001-inflated-letters/Experiment')),

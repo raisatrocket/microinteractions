@@ -7,6 +7,13 @@
  * genuine overlap where the repulsion force balances the squeeze, rather
  * than always being shoved back to a tidy non-overlapping arrangement.
  *
+ * Each letter's collision shape is a small cluster of circles approximating
+ * its printed silhouette (a "B" is roughly two lobes and a spine), not one
+ * circle spanning the whole glyph — otherwise a narrow "L" would collide as
+ * if it were as wide as a "B". The cluster is rigidly attached to the
+ * letter: it moves and deforms as one body, and only ever collides against
+ * *other* letters' or walls' sub-circles, never against its own.
+ *
  * Integration follows the same fixed-substep technique as `lib/spring.ts`,
  * for the same reason: explicit Euler on a stiff spring is only stable when
  * the step is small relative to the spring's natural frequency, and this
@@ -15,17 +22,85 @@
 
 export const LETTER_CHARS = ['B', 'U', 'B', 'B', 'L', 'E'] as const
 
-export const LETTER_DIAMETER = 76
-export const LETTER_RADIUS = LETTER_DIAMETER / 2
-
-export const CONTAINER_MIN_WIDTH = 220
-export const CONTAINER_MIN_HEIGHT = 168
-export const CONTAINER_MAX_WIDTH = 620
-export const CONTAINER_MAX_HEIGHT = 420
-export const CONTAINER_DEFAULT_WIDTH = 520
+export const CONTAINER_MIN_WIDTH = 200
+export const CONTAINER_MIN_HEIGHT = 150
+export const CONTAINER_MAX_WIDTH = 660
+export const CONTAINER_MAX_HEIGHT = 440
+export const CONTAINER_DEFAULT_WIDTH = 580
 export const CONTAINER_DEFAULT_HEIGHT = 320
 
+/**
+ * Hand-authored circle-cluster approximations of each glyph's silhouette, as
+ * fractions of the glyph's own measured (width, height) — x/y from the
+ * top-left, r as a fraction of height so it scales sensibly regardless of a
+ * letter's width. Resolved to real pixel offsets once the glyph is actually
+ * measured in the browser, since web font metrics can't be known in advance.
+ */
+const PROPORTIONAL_SHAPES: Record<
+  string,
+  { x: number; y: number; r: number }[]
+> = {
+  B: [
+    { x: 0.3, y: 0.22, r: 0.2 },
+    { x: 0.3, y: 0.78, r: 0.2 },
+    { x: 0.4, y: 0.5, r: 0.16 },
+    { x: 0.65, y: 0.27, r: 0.25 },
+    { x: 0.67, y: 0.75, r: 0.27 },
+  ],
+  U: [
+    { x: 0.22, y: 0.2, r: 0.2 },
+    { x: 0.78, y: 0.2, r: 0.2 },
+    { x: 0.18, y: 0.55, r: 0.2 },
+    { x: 0.82, y: 0.55, r: 0.2 },
+    { x: 0.5, y: 0.83, r: 0.24 },
+  ],
+  L: [
+    { x: 0.26, y: 0.18, r: 0.2 },
+    { x: 0.26, y: 0.5, r: 0.2 },
+    { x: 0.26, y: 0.82, r: 0.2 },
+    { x: 0.5, y: 0.83, r: 0.18 },
+    { x: 0.74, y: 0.83, r: 0.2 },
+  ],
+  E: [
+    { x: 0.26, y: 0.15, r: 0.18 },
+    { x: 0.7, y: 0.15, r: 0.16 },
+    { x: 0.26, y: 0.5, r: 0.18 },
+    { x: 0.6, y: 0.5, r: 0.15 },
+    { x: 0.26, y: 0.85, r: 0.18 },
+    { x: 0.7, y: 0.85, r: 0.16 },
+  ],
+}
+
+export type SubCircle = { dx: number; dy: number; r: number }
+
+export type LetterShape = {
+  subCircles: SubCircle[]
+  halfWidth: number
+  halfHeight: number
+}
+
+/** Turns a glyph's real measured size into an actual pixel circle cluster,
+ *  offsets relative to the glyph's own center. */
+export function resolveLetterShape(
+  char: string,
+  width: number,
+  height: number,
+): LetterShape {
+  const proportional = PROPORTIONAL_SHAPES[char]
+  const subCircles = proportional
+    ? proportional.map((c) => ({
+        dx: (c.x - 0.5) * width,
+        dy: (c.y - 0.5) * height,
+        r: c.r * height,
+      }))
+    : // An unexpected character still collides sensibly instead of crashing.
+      [{ dx: 0, dy: 0, r: Math.max(width, height) / 2 }]
+
+  return { subCircles, halfWidth: width / 2, halfHeight: height / 2 }
+}
+
 export type Letter = {
+  char: string
   x: number
   y: number
   vx: number
@@ -36,10 +111,26 @@ export type Letter = {
   squish: number
   /** Radians; direction of whatever is compressing this letter hardest. */
   squishAngle: number
+  shape: LetterShape
 }
 
-export function createLetter(x: number, y: number): Letter {
-  return { x, y, vx: 0, vy: 0, held: false, squish: 0, squishAngle: 0 }
+export function createLetter(
+  char: string,
+  x: number,
+  y: number,
+  shape: LetterShape,
+): Letter {
+  return {
+    char,
+    x,
+    y,
+    vx: 0,
+    vy: 0,
+    held: false,
+    squish: 0,
+    squishAngle: 0,
+    shape,
+  }
 }
 
 const FRICTION = 2.2 // 1/s velocity decay
@@ -51,18 +142,16 @@ const SQUISH_SMOOTH = 14 // 1/s, how fast the visual catches up to real overlap
 const MAX_SQUISH = 0.38
 
 /**
- * Absolute ceilings on penetration, regardless of spring stiffness — a fast
- * fling can out-run the spring for a frame or two, and these are the
- * backstops that guarantee correctness. The two are intentionally different:
- * two letters overlapping each other is contained entirely within the
- * container, so it can be generous (that overlap *is* the compressed look,
- * and it persists structurally for as long as the box stays small — no
- * separate decay needed). A letter penetrating a wall is a letter poking
- * through the container's own drawn edge, which reads as a bug rather than
- * pressure, so that one stays tight.
+ * Backstop fractions, applied per-contact against the radii actually
+ * involved, so they scale correctly across a cluster's differently sized
+ * sub-circles. Two letters overlapping is contained entirely within the
+ * container, so it can be generous — that overlap *is* the compressed
+ * look. A sub-circle penetrating a wall is poking through the container's
+ * own drawn edge, which reads as a bug rather than pressure, so it stays
+ * tight.
  */
-const MAX_WALL_PENETRATION = 3
-const MAX_PAIR_OVERLAP = LETTER_DIAMETER * MAX_SQUISH
+const MAX_WALL_PENETRATION_FRACTION = 0.08
+const MAX_PAIR_OVERLAP_FRACTION = MAX_SQUISH
 
 const SUBSTEP = 1 / 480
 const MAX_FRAME = 1 / 30
@@ -106,88 +195,93 @@ function substep(
 
   const contact: Contact[] = letters.map(() => ({ amount: 0, nx: 0, ny: 0 }))
 
-  const minX = LETTER_RADIUS
-  const maxX = Math.max(containerWidth - LETTER_RADIUS, minX)
-  const minY = LETTER_RADIUS
-  const maxY = Math.max(containerHeight - LETTER_RADIUS, minY)
-
+  // Walls: every sub-circle of every letter is checked independently, so a
+  // letter's rightmost lobe can press against the wall while its spine on
+  // the far side still has clearance.
   for (let i = 0; i < letters.length; i++) {
     const l = letters[i]
     const c = contact[i]
+    for (const sub of l.shape.subCircles) {
+      const wx = l.x + sub.dx
+      const wy = l.y + sub.dy
+      const tolerance = sub.r * MAX_WALL_PENETRATION_FRACTION
 
-    resolveWall(l, c, minX - l.x, 1, 0, dt, (v) => {
-      l.x = minX - v
-    })
-    resolveWall(l, c, l.x - maxX, -1, 0, dt, (v) => {
-      l.x = maxX + v
-    })
-    resolveWall(l, c, minY - l.y, 0, 1, dt, (v) => {
-      l.y = minY - v
-    })
-    resolveWall(l, c, l.y - maxY, 0, -1, dt, (v) => {
-      l.y = maxY + v
-    })
+      resolveWallSub(l, c, sub.r - wx, 1, 0, dt, tolerance)
+      resolveWallSub(l, c, wx - (containerWidth - sub.r), -1, 0, dt, tolerance)
+      resolveWallSub(l, c, sub.r - wy, 0, 1, dt, tolerance)
+      resolveWallSub(l, c, wy - (containerHeight - sub.r), 0, -1, dt, tolerance)
+    }
   }
 
+  // Pairs: every sub-circle combination between every pair of letters. A
+  // wide letter with several sub-circles resting against a neighbor
+  // legitimately gets several simultaneous contact contributions — that is
+  // correct, not double-counted, the same way real distributed contact
+  // between two touching shapes works.
   for (let i = 0; i < letters.length; i++) {
     for (let j = i + 1; j < letters.length; j++) {
       const a = letters[i]
       const b = letters[j]
-      const dx = b.x - a.x
-      const dy = b.y - a.y
-      const dist = Math.hypot(dx, dy) || 0.0001
-      const overlap = LETTER_DIAMETER - dist
-      if (overlap <= 0) continue
+      for (const sa of a.shape.subCircles) {
+        const ax = a.x + sa.dx
+        const ay = a.y + sa.dy
+        for (const sb of b.shape.subCircles) {
+          const bx = b.x + sb.dx
+          const by = b.y + sb.dy
+          const dx = bx - ax
+          const dy = by - ay
+          const dist = Math.hypot(dx, dy) || 0.0001
+          const sumR = sa.r + sb.r
+          const overlap = sumR - dist
+          if (overlap <= 0) continue
 
-      const nx = dx / dist
-      const ny = dy / dist
-      const accel = LETTER_STIFFNESS * overlap
+          const nx = dx / dist
+          const ny = dy / dist
+          const accel = LETTER_STIFFNESS * overlap
 
-      if (!a.held) {
-        a.vx -= nx * accel * dt
-        a.vy -= ny * accel * dt
-      }
-      if (!b.held) {
-        b.vx += nx * accel * dt
-        b.vy += ny * accel * dt
-      }
+          if (!a.held) {
+            a.vx -= nx * accel * dt
+            a.vy -= ny * accel * dt
+          }
+          if (!b.held) {
+            b.vx += nx * accel * dt
+            b.vy += ny * accel * dt
+          }
 
-      // Damp the closing speed along the contact normal so pairs settle
-      // instead of bouncing indefinitely.
-      const closing = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny
-      if (closing > 0) {
-        const damp = Math.min(LETTER_DAMPING * dt, 1) * closing
-        if (!a.held) {
-          a.vx -= nx * damp * 0.5
-          a.vy -= ny * damp * 0.5
+          const closing = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny
+          if (closing > 0) {
+            const damp = Math.min(LETTER_DAMPING * dt, 1) * closing
+            if (!a.held) {
+              a.vx -= nx * damp * 0.5
+              a.vy -= ny * damp * 0.5
+            }
+            if (!b.held) {
+              b.vx += nx * damp * 0.5
+              b.vy += ny * damp * 0.5
+            }
+          }
+
+          const excess = overlap - sumR * MAX_PAIR_OVERLAP_FRACTION
+          if (excess > 0) {
+            const push = excess / 2
+            if (!a.held) {
+              a.x -= nx * push
+              a.y -= ny * push
+            }
+            if (!b.held) {
+              b.x += nx * push
+              b.y += ny * push
+            }
+          }
+
+          contact[i].amount += overlap
+          contact[i].nx -= nx
+          contact[i].ny -= ny
+          contact[j].amount += overlap
+          contact[j].nx += nx
+          contact[j].ny += ny
         }
-        if (!b.held) {
-          b.vx += nx * damp * 0.5
-          b.vy += ny * damp * 0.5
-        }
       }
-
-      // Hard backstop: never let two letters interpenetrate past the cap,
-      // regardless of how the spring above is tracking.
-      const excess = overlap - MAX_PAIR_OVERLAP
-      if (excess > 0) {
-        const push = excess / 2
-        if (!a.held) {
-          a.x -= nx * push
-          a.y -= ny * push
-        }
-        if (!b.held) {
-          b.x += nx * push
-          b.y += ny * push
-        }
-      }
-
-      contact[i].amount += overlap
-      contact[i].nx -= nx
-      contact[i].ny -= ny
-      contact[j].amount += overlap
-      contact[j].nx += nx
-      contact[j].ny += ny
     }
   }
 
@@ -195,8 +289,11 @@ function substep(
   for (let i = 0; i < letters.length; i++) {
     const l = letters[i]
     const c = contact[i]
+    // Normalize by the letter's own scale (half-height), so a big letter and
+    // a small letter reach visually comparable squish under comparable
+    // relative pressure.
     const target = Math.min(
-      Math.pow(c.amount / LETTER_DIAMETER, 0.6),
+      Math.pow(c.amount / (l.shape.halfHeight * 2), 0.6),
       MAX_SQUISH,
     )
     l.squish += (target - l.squish) * smoothing
@@ -207,18 +304,20 @@ function substep(
 }
 
 /**
- * One wall. `nx,ny` points *into* the container (away from the wall).
- * `setClamped` receives the backstop penetration to clamp the position to,
- * measured from the wall.
+ * One wall, for one sub-circle. `nx,ny` points *into* the container (away
+ * from the wall). Positional correction is applied to the *letter's*
+ * position (not the sub-circle, which has no position of its own) — moving
+ * the whole letter by the excess is what pulls the offending sub-circle
+ * back within tolerance.
  */
-function resolveWall(
+function resolveWallSub(
   l: Letter,
   contact: Contact,
   penetration: number,
   nx: number,
   ny: number,
   dt: number,
-  setClamped: (backstopPenetration: number) => void,
+  tolerance: number,
 ): void {
   if (penetration <= 0) return
 
@@ -234,8 +333,10 @@ function resolveWall(
       l.vy += ny * damp
     }
 
-    if (penetration > MAX_WALL_PENETRATION) {
-      setClamped(MAX_WALL_PENETRATION)
+    const excess = penetration - tolerance
+    if (excess > 0) {
+      l.x += nx * excess
+      l.y += ny * excess
     }
   }
 
