@@ -147,16 +147,25 @@ with a fixed substep, in `src/lib/spring.ts`.
 
 ## Deployment
 
-Vercel builds this from the repo with no configuration beyond `vercel.json`,
-which is already committed. To connect it:
-
-1. Go to **https://vercel.com/new** and import `raisatrocket/microinteractions`
-2. Accept the detected settings (Vite · `npm run build` · `dist`)
-3. Deploy
-
-After that every push to `main` publishes to production, and every branch and
-pull request gets its own preview URL.
+Live at **https://microinteractions-pi.vercel.app**, built by Vercel from
+`main`. Every other branch and pull request gets its own preview URL.
 
 The `rewrites` rule in `vercel.json` is what makes deep links work on a cold
-load — without it, `/elastic-toggle` would 404 on the server instead of
-reaching the app.
+load — without it, `/elastic-toggle` and `/embed/magnetic-button` would 404 on
+the server instead of reaching the app.
+
+### Knowing what is actually live
+
+Each build stamps itself with the branch and commit it came from — in the page
+footer, and as meta tags for reading without a browser:
+
+```bash
+curl -s https://microinteractions-pi.vercel.app/ | grep build-ref
+# <meta name="build-ref" content="main">
+```
+
+This exists because the two are easy to get out of step. Vercel's production
+branch is a setting on the Vercel side; changing the repo's default branch on
+GitHub does not move it, and changing it in Vercel does not trigger a rebuild
+on its own — the next push does. When production looks stale, check the stamp
+before assuming the deploy failed.
