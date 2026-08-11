@@ -34,7 +34,7 @@ export default function ExperimentSection({
   onNavigate,
   sectionRef,
 }: Props) {
-  const { slug, title, blurb, tags, date, Component } = experiment
+  const { slug, title, blurb, date, Component } = experiment
 
   const link = useCopy()
   const embed = useCopy()
@@ -84,37 +84,27 @@ export default function ExperimentSection({
 
           <p className="exp__blurb">{blurb}</p>
 
-          <div className="exp__footer">
-            <ul className="exp__tags">
-              {tags.map((tag) => (
-                <li key={tag} className="exp__tag mono">
-                  {tag}
-                </li>
-              ))}
-            </ul>
+          <div className="exp__actions">
+            <button
+              type="button"
+              className="exp__copy"
+              onClick={copyLink}
+              data-copied={link.copied || undefined}
+            >
+              <LinkIcon />
+              <span>{link.copied ? 'Copied' : 'Copy link'}</span>
+            </button>
 
-            <div className="exp__actions">
-              <button
-                type="button"
-                className="exp__copy"
-                onClick={copyLink}
-                data-copied={link.copied || undefined}
-              >
-                <LinkIcon />
-                <span>{link.copied ? 'Copied' : 'Copy link'}</span>
-              </button>
-
-              <button
-                type="button"
-                className="exp__copy"
-                onClick={copyEmbed}
-                data-copied={embed.copied || undefined}
-                title={`<iframe src="${'/embed/'}${slug}"> — paste into an Embed element`}
-              >
-                <EmbedIcon />
-                <span>{embed.copied ? 'Copied' : 'Copy embed'}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              className="exp__copy"
+              onClick={copyEmbed}
+              data-copied={embed.copied || undefined}
+              title={`<iframe src="${'/embed/'}${slug}"> — paste into an Embed element`}
+            >
+              <EmbedIcon />
+              <span>{embed.copied ? 'Copied' : 'Copy embed'}</span>
+            </button>
           </div>
         </header>
 

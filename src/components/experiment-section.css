@@ -128,31 +128,6 @@
   text-wrap: pretty;
 }
 
-.exp__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-top: 16px;
-}
-
-.exp__tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  list-style: none;
-  padding: 0;
-}
-
-.exp__tag {
-  padding: 3px 8px;
-  border: 1px solid var(--line-soft);
-  border-radius: 999px;
-  color: var(--text-faint);
-  background: var(--panel);
-}
-
 /* ------------------------------------------------------------------ *
  * Copy actions
  * ------------------------------------------------------------------ */
@@ -161,7 +136,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: none;
+  flex-wrap: wrap;
+  margin-top: 16px;
 }
 
 .exp__copy {

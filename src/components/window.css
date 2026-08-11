@@ -1,19 +1,6 @@
 .win {
   width: 100%;
   max-width: 800px;
-
-  /* The experiment canvas and its chrome bar are tuned for a dark surface —
-     glows, radial fields, box-shadows calibrated against near-black — and
-     stay that way regardless of the site's light/dark toggle. This shadows
-     the theme tokens for everything inside .win. */
-  --bg-elev: #0e0e11;
-  --panel: #121216;
-  --panel-hi: #17171c;
-  --line: #26262e;
-  --line-soft: #1a1a20;
-  --text: #ecedf0;
-  --text-dim: #8b8c98;
-  --text-faint: #55565f;
 }
 
 .win .chrome {
@@ -36,4 +23,13 @@
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.03) inset,
     0 24px 60px -30px rgba(0, 0, 0, 0.9);
+
+  /* The frame scrolls on narrow viewports so content never shrinks, but the
+     scroll itself is the affordance — a visible scrollbar under an 800×600
+     canvas reads as a layout glitch, not a control. */
+  scrollbar-width: none;
+}
+
+.win__frame::-webkit-scrollbar {
+  display: none;
 }
