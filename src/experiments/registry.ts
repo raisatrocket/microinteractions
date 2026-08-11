@@ -2,7 +2,7 @@ import { lazy } from 'react'
 import type { ComponentType, LazyExoticComponent } from 'react'
 
 export type Experiment = {
-  /** URL segment. `/magnetic-button` deep-links to this entry. Never rename. */
+  /** URL segment. `/elastic-toggle` deep-links to this entry. Never rename. */
   slug: string
   title: string
   /** One or two sentences: what the interaction is, and what to notice. */
@@ -20,13 +20,13 @@ export type Experiment = {
  */
 export const experiments: Experiment[] = [
   {
-    slug: 'magnetic-button',
-    title: 'Magnetic Button',
+    slug: 'inflated-letters',
+    title: 'Inflated Letters',
     blurb:
-      'A button that leans toward the pointer inside an invisible field, then springs home when you leave. The label travels further than the surface, which is what sells the depth.',
-    tags: ['pointer', 'spring', 'parallax'],
-    date: '2026-08-10',
-    Component: lazy(() => import('./001-magnetic-button/Experiment')),
+      'Six letters spelling BUBBLE, each one a soft, draggable sphere that pushes back against its neighbors and the walls of a resizable container. Shrink the box and they compress into each other rather than just rearranging.',
+    tags: ['physics', 'drag', 'collision'],
+    date: '2026-08-14',
+    Component: lazy(() => import('./001-inflated-letters/Experiment')),
   },
   {
     slug: 'elastic-toggle',

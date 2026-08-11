@@ -1,0 +1,114 @@
+.letters {
+  position: relative;
+  display: block;
+  background: var(--bg-elev);
+}
+
+/* ------------------------------------------------------------------ *
+ * Container
+ * ------------------------------------------------------------------ */
+
+.letters__container {
+  position: absolute;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--panel) 55%, transparent);
+  /* Squashed letters can transiently reach a hair beyond their own box at
+     extreme angles — clip it so nothing ever renders outside the drawn
+     boundary, whatever the physics is doing in a given frame. */
+  overflow: hidden;
+  touch-action: none;
+}
+
+/* ------------------------------------------------------------------ *
+ * Letter bubbles
+ * ------------------------------------------------------------------ */
+
+.letters__bubble {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+  touch-action: none;
+  will-change: transform;
+
+  /* A neutral, physical-feeling sphere — same material language as the
+     elastic toggle's knob. Color comes later. */
+  background: linear-gradient(155deg, #fbfbfa 0%, #e4e2dc 62%, #cfccc4 100%);
+  box-shadow:
+    0 1px 1px rgba(255, 255, 255, 0.6) inset,
+    0 -10px 16px -8px rgba(0, 0, 0, 0.18) inset,
+    0 8px 18px -8px rgba(0, 0, 0, 0.45);
+}
+
+.letters__bubble:active {
+  cursor: grabbing;
+}
+
+.letters__glyph {
+  position: relative;
+  z-index: 1;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #2b2b30;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* A soft specular highlight, offset toward the upper-left — the detail that
+   sells "inflated" over "flat circle with a letter on it". */
+.letters__highlight {
+  position: absolute;
+  top: 12%;
+  left: 18%;
+  width: 34%;
+  height: 22%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+  filter: blur(2px);
+  rotate: -22deg;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ *
+ * Resize handle
+ * ------------------------------------------------------------------ */
+
+.letters__handle {
+  position: absolute;
+  /* Nudged off the exact corner so the container's own border-radius clip
+     doesn't eat into the handle's hit area. */
+  right: 2px;
+  bottom: 2px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+  cursor: nwse-resize;
+  touch-action: none;
+  transition: color 140ms ease;
+}
+
+.letters__handle:hover {
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------------------------ *
+ * Hint
+ * ------------------------------------------------------------------ */
+
+.letters__hint {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  translate: -50% 0;
+  color: var(--text-faint);
+  pointer-events: none;
+}

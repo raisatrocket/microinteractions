@@ -14,7 +14,7 @@ import './app.css'
 const CLAIM_LINE = 0.35
 
 function slugFromLocation(): string {
-  // Accept both `/magnetic-button` and `/#magnetic-button` so older links and
+  // Accept both `/elastic-toggle` and `/#elastic-toggle` so older links and
   // plain anchor links keep working.
   const fromPath = window.location.pathname.replace(/^\/+|\/+$/g, '')
   if (findExperiment(fromPath)) return fromPath

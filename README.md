@@ -68,12 +68,11 @@ then remembered (`localStorage`, key `mi-theme`) and applied before first
 paint on return visits — a small inline script in `index.html` does that, so
 there is no flash of the other theme on load.
 
-The experiment stage itself is exempt: it stays on its original dark surface
-regardless of the site theme, in `.win`'s override of the color tokens in
-`window.css`. The glows and radial fields in the existing experiments were
-tuned against a near-black canvas, and retuning them for a white one is a
-bigger job than a toggle — so the canvas is treated like a code editor's
-content pane: fixed, while the chrome around it adapts. The embed route is
+The experiment stage follows the toggle too — it isn't pinned to dark. It was,
+briefly, out of caution that the first few experiments' glows were tuned
+against a near-black canvas; that turned out not to matter in practice, since
+they're built on the same color tokens as everything else rather than
+hardcoded values, so removing the override just worked. The embed route is
 unaffected either way, since it never sets a theme and the dark values are
 already `:root`'s default.
 
@@ -81,8 +80,8 @@ Tokens live in `src/styles/global.css`. Most of them (`--bg`, `--panel`,
 `--text`, …) are used as-is and simply have a light variant. `--accent` is the
 exception: it stays the same bright mint in both themes for surface fills
 (buttons, tracks) where the always-dark `--accent-ink` sits on top of it as
-text. Where the accent is used as text or a thin line *directly on the page
-background* instead, contrast breaks in light mode — pale mint on white is
+text. Where the accent is used as text or a thin line _directly on the page
+background_ instead, contrast breaks in light mode — pale mint on white is
 close to invisible — so those spots use `--accent-text`, which is the same
 mint in dark and a darkened mix of it in light. If a new page-level element
 puts the accent color on the page background rather than inside a filled
@@ -112,22 +111,22 @@ clipboard:
 ></iframe>
 ```
 
-In **Framer**: add an Embed element, choose *HTML*, and paste. Give it a fill
+In **Framer**: add an Embed element, choose _HTML_, and paste. Give it a fill
 width and the `aspect-ratio` in the snippet keeps the height correct at every
 breakpoint.
 
 The snippet is built from the origin you copy it from, so copy from the
 deployed site — copying from `localhost:5173` will paste a localhost URL.
 
-**Sizing.** The stage is scaled to *fit*, by whichever axis is tighter, so an
+**Sizing.** The stage is scaled to _fit_, by whichever axis is tighter, so an
 iframe at any ratio letterboxes instead of cropping. 4:3 matches the stage
 exactly and wastes no space, which is why it is the default in the snippet.
 
 **Options.**
 
-| Query | Effect |
-| --- | --- |
-| *(none)* | Bare stage. The default, and what you usually want in a designed page. |
+| Query       | Effect                                                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _(none)_    | Bare stage. The default, and what you usually want in a designed page.                                                                                  |
 | `?chrome=1` | Keeps the replay / speed / grid controls above the stage. Useful for one-shot interactions like Morphing Action, where a visitor may want to replay it. |
 
 **Framing is allowed from anywhere** — nothing sets `X-Frame-Options` or a
@@ -193,7 +192,7 @@ Live at **https://microinteractions-pi.vercel.app**, built by Vercel from
 `main`. Every other branch and pull request gets its own preview URL.
 
 The `rewrites` rule in `vercel.json` is what makes deep links work on a cold
-load — without it, `/elastic-toggle` and `/embed/magnetic-button` would 404 on
+load — without it, `/elastic-toggle` and `/embed/elastic-toggle` would 404 on
 the server instead of reaching the app.
 
 ### Knowing what is actually live
