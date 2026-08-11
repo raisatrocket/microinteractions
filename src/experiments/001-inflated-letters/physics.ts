@@ -1,210 +1,230 @@
 /**
- * A small spring-repulsion simulation for the letter bubbles: not
- * force-and-collide-then-snap-apart, but a continuous repulsion proportional
- * to how far two circles (or a circle and a wall) overlap. That distinction
- * is what makes "compress the letters" actually read as compression — under
- * sustained pressure (a shrinking container, say) the letters settle into a
- * genuine overlap where the repulsion force balances the squeeze, rather
- * than always being shoved back to a tidy non-overlapping arrangement.
+ * A real soft body per letter, not a rigid cluster with one global squash
+ * transform. Each letter's outline is a ring of connected point-masses that
+ * genuinely deform locally — press on one lobe of a "B" and that lobe alone
+ * gives, while the rest of the letter barely notices — held together by two
+ * forces:
  *
- * Each letter's collision shape is a small cluster of circles approximating
- * its printed silhouette (a "B" is roughly two lobes and a spine), not one
- * circle spanning the whole glyph — otherwise a narrow "L" would collide as
- * if it were as wide as a "B". The cluster is rigidly attached to the
- * letter: it moves and deforms as one body, and only ever collides against
- * *other* letters' or walls' sub-circles, never against its own.
+ *  - Shape matching: each point is pulled toward where it "should" be, given
+ *    the shape's current center and best-fit rotation (a standard, stable
+ *    alternative to true pressure-based inflation — Müller et al.'s meshless
+ *    shape matching, restricted to 2D rotation). This is what keeps a
+ *    squeezed letter recognizable as that letter instead of collapsing into
+ *    a blob, while still allowing real local give.
+ *  - Edge springs between consecutive boundary points, keeping the outline
+ *    locally taut so it doesn't self-intersect or go spiky under uneven
+ *    contact.
  *
- * Integration follows the same fixed-substep technique as `lib/spring.ts`,
- * for the same reason: explicit Euler on a stiff spring is only stable when
- * the step is small relative to the spring's natural frequency, and this
- * repulsion is stiffer than anything in that file.
+ * Collision is boundary-point-to-boundary-point between different letters
+ * (each point a small circle) plus per-point wall checks — the same
+ * repulsion-with-a-hard-backstop technique as before, just applied to many
+ * points per letter instead of a handful of rigid sub-circles, which is what
+ * lets contact actually localize to where it's happening.
+ *
+ * Integration uses the same fixed-substep technique as lib/spring.ts, for
+ * the same reason: these springs are stiffer than the natural frequency a
+ * single real-time step can resolve.
  */
+
+import { LETTER_OUTLINES } from './outlines'
+import type { Vec } from './outlines'
 
 export const LETTER_CHARS = ['B', 'U', 'B', 'B', 'L', 'E'] as const
 
-export const CONTAINER_MIN_WIDTH = 200
-export const CONTAINER_MIN_HEIGHT = 150
+export const CONTAINER_MIN_WIDTH = 220
+export const CONTAINER_MIN_HEIGHT = 160
 export const CONTAINER_MAX_WIDTH = 660
 export const CONTAINER_MAX_HEIGHT = 400
 export const CONTAINER_DEFAULT_WIDTH = 580
 export const CONTAINER_DEFAULT_HEIGHT = 320
 
-/** The font-size the glyphs are measured at, and what the size slider's
- *  default reproduces. Every other size is this scaled, both visually
- *  (font-size) and physically (collision shapes), from the same number. */
-export const BASE_FONT_SIZE = 106
-export const MIN_FONT_SIZE = 64
-export const MAX_FONT_SIZE = 158
+/** The glyph height (in px) the size slider's default reproduces. */
+export const BASE_SIZE = 106
+export const MIN_SIZE = 64
+export const MAX_SIZE = 158
 
-/**
- * Hand-authored circle-cluster approximations of each glyph's silhouette, as
- * fractions of the glyph's own measured (width, height) — x/y from the
- * top-left, r as a fraction of height so it scales sensibly regardless of a
- * letter's width. Resolved to real pixel offsets once the glyph is actually
- * measured in the browser, since web font metrics can't be known in advance.
- */
-const PROPORTIONAL_SHAPES: Record<
-  string,
-  { x: number; y: number; r: number }[]
-> = {
-  B: [
-    { x: 0.3, y: 0.22, r: 0.2 },
-    { x: 0.3, y: 0.78, r: 0.2 },
-    { x: 0.4, y: 0.5, r: 0.16 },
-    { x: 0.65, y: 0.27, r: 0.25 },
-    { x: 0.67, y: 0.75, r: 0.27 },
-  ],
-  U: [
-    { x: 0.22, y: 0.2, r: 0.2 },
-    { x: 0.78, y: 0.2, r: 0.2 },
-    { x: 0.18, y: 0.55, r: 0.2 },
-    { x: 0.82, y: 0.55, r: 0.2 },
-    { x: 0.5, y: 0.83, r: 0.24 },
-  ],
-  L: [
-    { x: 0.26, y: 0.18, r: 0.2 },
-    { x: 0.26, y: 0.5, r: 0.2 },
-    { x: 0.26, y: 0.82, r: 0.2 },
-    { x: 0.5, y: 0.83, r: 0.18 },
-    { x: 0.74, y: 0.83, r: 0.2 },
-  ],
-  E: [
-    { x: 0.26, y: 0.15, r: 0.18 },
-    { x: 0.7, y: 0.15, r: 0.16 },
-    { x: 0.26, y: 0.5, r: 0.18 },
-    { x: 0.6, y: 0.5, r: 0.15 },
-    { x: 0.26, y: 0.85, r: 0.18 },
-    { x: 0.7, y: 0.85, r: 0.16 },
-  ],
-}
-
-export type SubCircle = { dx: number; dy: number; r: number }
-
-export type LetterShape = {
-  subCircles: SubCircle[]
-  halfWidth: number
-  halfHeight: number
-}
-
-/** Turns a glyph's real measured size into an actual pixel circle cluster,
- *  offsets relative to the glyph's own center. */
-export function resolveLetterShape(
-  char: string,
-  width: number,
-  height: number,
-): LetterShape {
-  const proportional = PROPORTIONAL_SHAPES[char]
-  const subCircles = proportional
-    ? proportional.map((c) => ({
-        dx: (c.x - 0.5) * width,
-        dy: (c.y - 0.5) * height,
-        r: c.r * height,
-      }))
-    : // An unexpected character still collides sensibly instead of crashing.
-      [{ dx: 0, dy: 0, r: Math.max(width, height) / 2 }]
-
-  return { subCircles, halfWidth: width / 2, halfHeight: height / 2 }
-}
-
-export type Letter = {
-  char: string
+type Node = {
   x: number
   y: number
   vx: number
   vy: number
-  held: boolean
-  /** 0 (round) to 1 (fully flattened) — always the *current* overlap, not a
-   *  decaying memory of a past impact, so it tracks sustained pressure. */
-  squish: number
-  /** Radians; direction of whatever is compressing this letter hardest. */
-  squishAngle: number
-  shape: LetterShape
-  /** This glyph's real measured size at BASE_FONT_SIZE — kept alongside the
-   *  live (possibly rescaled) shape so the size slider can recompute the
-   *  collision shape from arithmetic alone. Font scaling is linear, so
-   *  there's no need to re-measure the DOM on every slider move. */
-  baseWidth: number
-  baseHeight: number
+  /** Offset from the shape's own rest center, in its unrotated rest frame —
+   *  what shape matching pulls this point back toward. */
+  restX: number
+  restY: number
 }
 
+export type Letter = {
+  char: string
+  outer: Node[]
+  /** Not simulated — carried rigidly by the fitted (center, angle) each
+   *  frame, since holes only need to read correctly, not collide. */
+  holeRest: Vec[][]
+  /** Current best-fit rest-edge length per outer edge i -> i+1, recomputed
+   *  whenever the letter is rescaled. */
+  restEdgeLength: number[]
+  nodeRadius: number
+  boundingRadius: number
+  held: boolean
+  /** Where the pointer wants the shape's center to be, while held. */
+  targetX: number
+  targetY: number
+  // Derived once per substep:
+  cx: number
+  cy: number
+  angle: number
+}
+
+/** Builds a letter centered at (x, y), sized so its outline spans roughly
+ *  `size` px tall — the same "size" the size slider controls. */
 export function createLetter(
   char: string,
   x: number,
   y: number,
-  shape: LetterShape,
-  baseWidth: number,
-  baseHeight: number,
+  size: number,
 ): Letter {
+  const outline = LETTER_OUTLINES[char]
+  const { restOffsets, restCenter } = centerOutline(outline.outer)
+
+  const outer: Node[] = outline.outer.map((_, i) => {
+    const rx = restOffsets[i].x * size
+    const ry = restOffsets[i].y * size
+    return { x: x + rx, y: y + ry, vx: 0, vy: 0, restX: rx, restY: ry }
+  })
+
+  const holeRest = outline.holes.map((hole) =>
+    hole.map((p) => ({
+      x: (p.x - restCenter.x) * size,
+      y: (p.y - restCenter.y) * size,
+    })),
+  )
+
   return {
     char,
-    x,
-    y,
-    vx: 0,
-    vy: 0,
+    outer,
+    holeRest,
+    restEdgeLength: computeEdgeLengths(outer),
+    nodeRadius: estimateNodeRadius(outer),
+    boundingRadius: estimateBoundingRadius(outer),
     held: false,
-    squish: 0,
-    squishAngle: 0,
-    shape,
-    baseWidth,
-    baseHeight,
+    targetX: x,
+    targetY: y,
+    cx: x,
+    cy: y,
+    angle: 0,
   }
 }
 
-/** Rebuilds a letter's collision shape for a new font-size, from its cached
- *  base measurement — used by the size slider, which changes every letter's
- *  effective scale without re-measuring anything. */
-export function rescaleLetterShape(
-  letter: Letter,
-  fontSize: number,
-): LetterShape {
-  const scale = fontSize / BASE_FONT_SIZE
-  return resolveLetterShape(
-    letter.char,
-    letter.baseWidth * scale,
-    letter.baseHeight * scale,
+/** Rebuilds a letter's rest geometry for a new size, without touching
+ *  current node positions or velocities — the shape-matching spring animates
+ *  the transition on its own over the next several frames, which is what
+ *  makes the size slider look like the letter actually inflating/deflating
+ *  rather than snapping. */
+export function rescaleLetter(letter: Letter, size: number): void {
+  const outline = LETTER_OUTLINES[letter.char]
+  const { restOffsets, restCenter } = centerOutline(outline.outer)
+
+  for (let i = 0; i < letter.outer.length; i++) {
+    letter.outer[i].restX = restOffsets[i].x * size
+    letter.outer[i].restY = restOffsets[i].y * size
+  }
+  letter.holeRest = outline.holes.map((hole) =>
+    hole.map((p) => ({
+      x: (p.x - restCenter.x) * size,
+      y: (p.y - restCenter.y) * size,
+    })),
   )
+  letter.restEdgeLength = computeEdgeLengths(letter.outer)
+  letter.nodeRadius = estimateNodeRadius(letter.outer)
+  letter.boundingRadius = estimateBoundingRadius(letter.outer)
 }
 
-const FRICTION = 2.2 // 1/s velocity decay
-const WALL_STIFFNESS = 2400 // px/s^2 per px of penetration
-const WALL_DAMPING = 18 // 1/s, kills velocity driving further into a wall
-const LETTER_STIFFNESS = 2000
-const LETTER_DAMPING = 16
-const SQUISH_SMOOTH = 14 // 1/s, how fast the visual catches up to real overlap
-const MAX_SQUISH = 0.38
+/** A letter's rough on-screen width at a given size — for laying out the
+ *  starting row, where a narrow "L" and a wide "B" shouldn't get equal
+ *  space. Not exact (the outline's true bounding box vs. its nominal
+ *  width/height ratio), just close enough for spacing. */
+export function letterWidth(char: string, size: number): number {
+  return LETTER_OUTLINES[char].width * size
+}
 
-/**
- * Backstop fractions, applied per-contact against the radii actually
- * involved, so they scale correctly across a cluster's differently sized
- * sub-circles. Two letters overlapping is contained entirely within the
- * container, so it can be generous — that overlap *is* the compressed
- * look. A sub-circle penetrating a wall is poking through the container's
- * own drawn edge, which reads as a bug rather than pressure, so it stays
- * tight.
- */
-const MAX_WALL_PENETRATION_FRACTION = 0.08
-const MAX_PAIR_OVERLAP_FRACTION = MAX_SQUISH
+function centerOutline(points: Vec[]): { restOffsets: Vec[]; restCenter: Vec } {
+  let cx = 0
+  let cy = 0
+  for (const p of points) {
+    cx += p.x
+    cy += p.y
+  }
+  cx /= points.length
+  cy /= points.length
+  return {
+    restOffsets: points.map((p) => ({ x: p.x - cx, y: p.y - cy })),
+    restCenter: { x: cx, y: cy },
+  }
+}
+
+function computeEdgeLengths(outer: Node[]): number[] {
+  return outer.map((n, i) => {
+    const next = outer[(i + 1) % outer.length]
+    return Math.hypot(next.restX - n.restX, next.restY - n.restY)
+  })
+}
+
+function estimateNodeRadius(outer: Node[]): number {
+  const avg =
+    outer.reduce((sum, n, i) => {
+      const next = outer[(i + 1) % outer.length]
+      return sum + Math.hypot(next.restX - n.restX, next.restY - n.restY)
+    }, 0) / outer.length
+  // A bit over half the average spacing, so neighboring points' collision
+  // circles overlap slightly and the boundary reads as a continuous skin
+  // rather than a string of separated dots.
+  return avg * 0.58
+}
+
+function estimateBoundingRadius(outer: Node[]): number {
+  let max = 0
+  for (const n of outer) {
+    max = Math.max(max, Math.hypot(n.restX, n.restY))
+  }
+  return max
+}
+
+const FRICTION = 3.0 // 1/s velocity decay
+const EDGE_STIFFNESS = 3200
+const EDGE_DAMPING = 24
+const SHAPE_STIFFNESS = 950 // scaled by the inflation-derived firmness factor
+const SHAPE_DAMPING = 20
+const WALL_STIFFNESS = 2600
+const WALL_DAMPING = 20
+const NODE_STIFFNESS = 2200
+const NODE_DAMPING = 18
+
+const MAX_WALL_PENETRATION_FRACTION = 0.35
+const MAX_PAIR_OVERLAP_FRACTION = 0.7
+/** Skip a letter pair's O(n*m) node checks entirely unless their bounding
+ *  circles are already close — most pairs, most of the time, aren't. */
+const BROAD_PHASE_MARGIN = 24
 
 const SUBSTEP = 1 / 480
 const MAX_FRAME = 1 / 30
 
-type Contact = { amount: number; nx: number; ny: number }
-
 /**
  * Advances the simulation by `rawDt` seconds (already multiplied by the
- * playback speed). Mutates `letters` in place. Returns whether anything is
- * still in motion, so the caller can stop the animation loop at rest.
+ * playback speed). `firmness` (roughly 0.5..1.6) scales how strongly each
+ * letter resists deformation — the inflation slider's physical half.
+ * Mutates `letters` in place. Returns whether anything is still moving.
  */
 export function stepPhysics(
   letters: Letter[],
   containerWidth: number,
   containerHeight: number,
   rawDt: number,
+  firmness: number,
 ): boolean {
   let remaining = Math.min(rawDt, MAX_FRAME)
   while (remaining > 0) {
     const h = Math.min(remaining, SUBSTEP)
-    substep(letters, containerWidth, containerHeight, h)
+    substep(letters, containerWidth, containerHeight, h, firmness)
     remaining -= h
   }
   return hasEnergy(letters)
@@ -215,176 +235,222 @@ function substep(
   containerWidth: number,
   containerHeight: number,
   dt: number,
+  firmness: number,
 ): void {
-  const frictionFactor = Math.exp(-FRICTION * dt)
-  for (const l of letters) {
-    if (l.held) continue
-    l.x += l.vx * dt
-    l.y += l.vy * dt
-    l.vx *= frictionFactor
-    l.vy *= frictionFactor
-  }
+  // Fit each letter's current center + rotation to its rest shape, then pull
+  // every point toward that fitted target. While held, the target center is
+  // pinned to the pointer instead of the shape's own current average — the
+  // whole letter follows the drag, but the boundary itself isn't hard-
+  // pinned, so it can still lag, wobble, and squish against neighbors mid-drag.
+  for (const letter of letters) {
+    if (letter.held) {
+      letter.cx = letter.targetX
+      letter.cy = letter.targetY
+    } else {
+      let cx = 0
+      let cy = 0
+      for (const n of letter.outer) {
+        cx += n.x
+        cy += n.y
+      }
+      letter.cx = cx / letter.outer.length
+      letter.cy = cy / letter.outer.length
+    }
 
-  const contact: Contact[] = letters.map(() => ({ amount: 0, nx: 0, ny: 0 }))
+    let sumCross = 0
+    let sumDot = 0
+    for (const n of letter.outer) {
+      const ox = n.x - letter.cx
+      const oy = n.y - letter.cy
+      sumCross += n.restX * oy - n.restY * ox
+      sumDot += n.restX * ox + n.restY * oy
+    }
+    letter.angle = Math.atan2(sumCross, sumDot)
 
-  // Walls: every sub-circle of every letter is checked independently, so a
-  // letter's rightmost lobe can press against the wall while its spine on
-  // the far side still has clearance.
-  for (let i = 0; i < letters.length; i++) {
-    const l = letters[i]
-    const c = contact[i]
-    for (const sub of l.shape.subCircles) {
-      const wx = l.x + sub.dx
-      const wy = l.y + sub.dy
-      const tolerance = sub.r * MAX_WALL_PENETRATION_FRACTION
+    const cosA = Math.cos(letter.angle)
+    const sinA = Math.sin(letter.angle)
+    const stiffness = SHAPE_STIFFNESS * firmness
 
-      resolveWallSub(l, c, sub.r - wx, 1, 0, dt, tolerance)
-      resolveWallSub(l, c, wx - (containerWidth - sub.r), -1, 0, dt, tolerance)
-      resolveWallSub(l, c, sub.r - wy, 0, 1, dt, tolerance)
-      resolveWallSub(l, c, wy - (containerHeight - sub.r), 0, -1, dt, tolerance)
+    for (const n of letter.outer) {
+      const targetX = letter.cx + (n.restX * cosA - n.restY * sinA)
+      const targetY = letter.cy + (n.restX * sinA + n.restY * cosA)
+      const ax = stiffness * (targetX - n.x) - SHAPE_DAMPING * n.vx
+      const ay = stiffness * (targetY - n.y) - SHAPE_DAMPING * n.vy
+      n.vx += ax * dt
+      n.vy += ay * dt
     }
   }
 
-  // Pairs: every sub-circle combination between every pair of letters. A
-  // wide letter with several sub-circles resting against a neighbor
-  // legitimately gets several simultaneous contact contributions — that is
-  // correct, not double-counted, the same way real distributed contact
-  // between two touching shapes works.
+  // Edge springs: keep the boundary locally taut.
+  for (const letter of letters) {
+    const n = letter.outer.length
+    for (let i = 0; i < n; i++) {
+      const a = letter.outer[i]
+      const b = letter.outer[(i + 1) % n]
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const dist = Math.hypot(dx, dy) || 0.0001
+      const rest = letter.restEdgeLength[i]
+      const nx = dx / dist
+      const ny = dy / dist
+      const stretch = dist - rest
+      const relVx = b.vx - a.vx
+      const relVy = b.vy - a.vy
+      const closing = relVx * nx + relVy * ny
+      const force = EDGE_STIFFNESS * stretch + EDGE_DAMPING * closing
+      const fx = nx * force
+      const fy = ny * force
+      a.vx += fx * dt
+      a.vy += fy * dt
+      b.vx -= fx * dt
+      b.vy -= fy * dt
+    }
+  }
+
+  // Integrate + friction.
+  const frictionFactor = Math.exp(-FRICTION * dt)
+  for (const letter of letters) {
+    for (const n of letter.outer) {
+      n.x += n.vx * dt
+      n.y += n.vy * dt
+      n.vx *= frictionFactor
+      n.vy *= frictionFactor
+    }
+  }
+
+  // Walls: every boundary point checked independently.
+  for (const letter of letters) {
+    const tolerance = letter.nodeRadius * MAX_WALL_PENETRATION_FRACTION
+    for (const n of letter.outer) {
+      resolveWall(n, tolerance, letter.nodeRadius - n.x, 1, 0, dt)
+      resolveWall(
+        n,
+        tolerance,
+        n.x - (containerWidth - letter.nodeRadius),
+        -1,
+        0,
+        dt,
+      )
+      resolveWall(n, tolerance, letter.nodeRadius - n.y, 0, 1, dt)
+      resolveWall(
+        n,
+        tolerance,
+        n.y - (containerHeight - letter.nodeRadius),
+        0,
+        -1,
+        dt,
+      )
+    }
+  }
+
+  // Pairs: boundary point vs. boundary point, between different letters only,
+  // with a broad-phase pass so far-apart letters cost almost nothing.
   for (let i = 0; i < letters.length; i++) {
+    const a = letters[i]
     for (let j = i + 1; j < letters.length; j++) {
-      const a = letters[i]
       const b = letters[j]
-      for (const sa of a.shape.subCircles) {
-        const ax = a.x + sa.dx
-        const ay = a.y + sa.dy
-        for (const sb of b.shape.subCircles) {
-          const bx = b.x + sb.dx
-          const by = b.y + sb.dy
-          const dx = bx - ax
-          const dy = by - ay
+      const cdx = b.cx - a.cx
+      const cdy = b.cy - a.cy
+      if (
+        Math.hypot(cdx, cdy) >
+        a.boundingRadius + b.boundingRadius + BROAD_PHASE_MARGIN
+      ) {
+        continue
+      }
+
+      const sumR = a.nodeRadius + b.nodeRadius
+      const maxOverlap = sumR * MAX_PAIR_OVERLAP_FRACTION
+
+      for (const na of a.outer) {
+        for (const nb of b.outer) {
+          const dx = nb.x - na.x
+          const dy = nb.y - na.y
           const dist = Math.hypot(dx, dy) || 0.0001
-          const sumR = sa.r + sb.r
           const overlap = sumR - dist
           if (overlap <= 0) continue
 
           const nx = dx / dist
           const ny = dy / dist
-          const accel = LETTER_STIFFNESS * overlap
+          const accel = NODE_STIFFNESS * overlap
 
-          if (!a.held) {
-            a.vx -= nx * accel * dt
-            a.vy -= ny * accel * dt
-          }
-          if (!b.held) {
-            b.vx += nx * accel * dt
-            b.vy += ny * accel * dt
-          }
+          na.vx -= nx * accel * dt
+          na.vy -= ny * accel * dt
+          nb.vx += nx * accel * dt
+          nb.vy += ny * accel * dt
 
-          const closing = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny
+          const closing = (na.vx - nb.vx) * nx + (na.vy - nb.vy) * ny
           if (closing > 0) {
-            const damp = Math.min(LETTER_DAMPING * dt, 1) * closing
-            if (!a.held) {
-              a.vx -= nx * damp * 0.5
-              a.vy -= ny * damp * 0.5
-            }
-            if (!b.held) {
-              b.vx += nx * damp * 0.5
-              b.vy += ny * damp * 0.5
-            }
+            const damp = Math.min(NODE_DAMPING * dt, 1) * closing * 0.5
+            na.vx -= nx * damp
+            na.vy -= ny * damp
+            nb.vx += nx * damp
+            nb.vy += ny * damp
           }
 
-          const excess = overlap - sumR * MAX_PAIR_OVERLAP_FRACTION
+          const excess = overlap - maxOverlap
           if (excess > 0) {
             const push = excess / 2
-            if (!a.held) {
-              a.x -= nx * push
-              a.y -= ny * push
-            }
-            if (!b.held) {
-              b.x += nx * push
-              b.y += ny * push
-            }
+            na.x -= nx * push
+            na.y -= ny * push
+            nb.x += nx * push
+            nb.y += ny * push
           }
-
-          contact[i].amount += overlap
-          contact[i].nx -= nx
-          contact[i].ny -= ny
-          contact[j].amount += overlap
-          contact[j].nx += nx
-          contact[j].ny += ny
         }
       }
     }
   }
-
-  const smoothing = 1 - Math.exp(-SQUISH_SMOOTH * dt)
-  for (let i = 0; i < letters.length; i++) {
-    const l = letters[i]
-    const c = contact[i]
-    // Normalize by the letter's own scale (half-height), so a big letter and
-    // a small letter reach visually comparable squish under comparable
-    // relative pressure.
-    const target = Math.min(
-      Math.pow(c.amount / (l.shape.halfHeight * 2), 0.6),
-      MAX_SQUISH,
-    )
-    l.squish += (target - l.squish) * smoothing
-    if (c.amount > 0.001) {
-      l.squishAngle = Math.atan2(c.ny, c.nx)
-    }
-  }
 }
 
-/**
- * One wall, for one sub-circle. `nx,ny` points *into* the container (away
- * from the wall). Positional correction is applied to the *letter's*
- * position (not the sub-circle, which has no position of its own) — moving
- * the whole letter by the excess is what pulls the offending sub-circle
- * back within tolerance.
- */
-function resolveWallSub(
-  l: Letter,
-  contact: Contact,
+function resolveWall(
+  n: { x: number; y: number; vx: number; vy: number },
+  tolerance: number,
   penetration: number,
   nx: number,
   ny: number,
   dt: number,
-  tolerance: number,
 ): void {
   if (penetration <= 0) return
 
-  if (!l.held) {
-    const accel = WALL_STIFFNESS * penetration
-    l.vx += nx * accel * dt
-    l.vy += ny * accel * dt
+  const accel = WALL_STIFFNESS * penetration
+  n.vx += nx * accel * dt
+  n.vy += ny * accel * dt
 
-    const into = -(l.vx * nx + l.vy * ny)
-    if (into > 0) {
-      const damp = Math.min(WALL_DAMPING * dt, 1) * into
-      l.vx += nx * damp
-      l.vy += ny * damp
-    }
-
-    const excess = penetration - tolerance
-    if (excess > 0) {
-      l.x += nx * excess
-      l.y += ny * excess
-    }
+  const into = -(n.vx * nx + n.vy * ny)
+  if (into > 0) {
+    const damp = Math.min(WALL_DAMPING * dt, 1) * into
+    n.vx += nx * damp
+    n.vy += ny * damp
   }
 
-  contact.amount += penetration
-  contact.nx += nx
-  contact.ny += ny
+  const excess = penetration - tolerance
+  if (excess > 0) {
+    n.x += nx * excess
+    n.y += ny * excess
+  }
 }
 
-const REST_SPEED = 0.6
-const REST_SQUISH_DELTA = 0.001
+const REST_SPEED = 1.2
 
 function hasEnergy(letters: Letter[]): boolean {
-  for (const l of letters) {
-    if (l.held) return true
-    if (Math.abs(l.vx) > REST_SPEED || Math.abs(l.vy) > REST_SPEED) return true
-    if (l.squish > REST_SQUISH_DELTA) return true
+  for (const letter of letters) {
+    if (letter.held) return true
+    for (const n of letter.outer) {
+      if (Math.abs(n.vx) > REST_SPEED || Math.abs(n.vy) > REST_SPEED)
+        return true
+    }
   }
   return false
+}
+
+/** The live hole positions for rendering — carried rigidly by the letter's
+ *  fitted (center, angle), recomputed fresh each paint. */
+export function liveHoles(letter: Letter): Vec[][] {
+  const cosA = Math.cos(letter.angle)
+  const sinA = Math.sin(letter.angle)
+  return letter.holeRest.map((hole) =>
+    hole.map((p) => ({
+      x: letter.cx + (p.x * cosA - p.y * sinA),
+      y: letter.cy + (p.x * sinA + p.y * cosA),
+    })),
+  )
 }

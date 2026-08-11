@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef } from 'react'
 import type {
   ChangeEvent,
   CSSProperties,
@@ -9,7 +9,7 @@ import { STAGE_HEIGHT, STAGE_WIDTH } from '../../components/Stage'
 import { clamp } from '../../lib/util'
 import { useStageScale, useTimeScale } from '../../stage/stage-context'
 import {
-  BASE_FONT_SIZE,
+  BASE_SIZE,
   CONTAINER_DEFAULT_HEIGHT,
   CONTAINER_DEFAULT_WIDTH,
   CONTAINER_MAX_HEIGHT,
@@ -17,14 +17,16 @@ import {
   CONTAINER_MIN_HEIGHT,
   CONTAINER_MIN_WIDTH,
   LETTER_CHARS,
-  MAX_FONT_SIZE,
-  MIN_FONT_SIZE,
+  MAX_SIZE,
+  MIN_SIZE,
   createLetter,
-  rescaleLetterShape,
-  resolveLetterShape,
+  letterWidth,
+  liveHoles,
+  rescaleLetter,
   stepPhysics,
 } from './physics'
 import type { Letter } from './physics'
+import type { Vec } from './outlines'
 import './style.css'
 
 /** A saturated color per letter — no two touching in the starting row land
@@ -38,11 +40,17 @@ const LETTER_COLORS = [
   '#a76bfa', // E — violet purple
 ] as const
 
-const GAP = 12
-const FONT_SPEC = '800 1em "Baloo 2"'
-/** 0-100, matched to the gradient/gloss/shadow constants in style.css so the
- *  default slider position reproduces the look the experiment shipped with. */
+const GAP = 14
+/** 0-100. Matched to the firmness/visual constants below so the default
+ *  slider position reproduces the look and feel this shipped with. */
 const DEFAULT_INFLATION = 70
+
+/** How strongly a letter resists deformation, derived from the inflation
+ *  slider — the softer/firmer half of what "inflation" means physically.
+ *  0 -> quite floppy, 100 -> taut and springs back fast. */
+function firmnessFromInflation(inflation: number): number {
+  return 0.42 + (inflation / 100) * 1.35
+}
 
 // A fixed anchor, not a recomputed center: the top-left corner of the
 // container never moves, so dragging the bottom-right handle grows the box
@@ -57,15 +65,18 @@ function clampSize(width: number, height: number) {
   }
 }
 
-/** An evenly spaced starting row using each letter's *own* measured width —
- *  a narrow "L" and a wide "B" don't get equal space — with a little
- *  vertical jitter so it doesn't read as a mechanically perfect line. */
+/** An evenly spaced starting row using each letter's own width — a narrow
+ *  "L" and a wide "B" don't get equal space — with a little vertical jitter
+ *  so it doesn't read as a mechanically perfect line. Snaps every node
+ *  straight to its resting offset around the row position: nothing has
+ *  moved yet, so there's no need to let the spring animate into place. */
 function layoutRow(
   letters: Letter[],
   containerWidth: number,
   containerHeight: number,
+  size: number,
 ): void {
-  const widths = letters.map((l) => l.shape.halfWidth * 2)
+  const widths = letters.map((l) => letterWidth(l.char, size))
   const totalWidth =
     widths.reduce((sum, w) => sum + w, 0) + GAP * (letters.length - 1)
   let cursor = (containerWidth - totalWidth) / 2
@@ -74,52 +85,89 @@ function layoutRow(
   letters.forEach((l, i) => {
     const w = widths[i]
     const jitter = (i % 2 === 0 ? -1 : 1) * Math.min(containerHeight * 0.08, 16)
-    l.x = clamp(
+    const targetX = clamp(
       cursor + w / 2,
-      l.shape.halfWidth,
-      containerWidth - l.shape.halfWidth,
+      l.boundingRadius,
+      containerWidth - l.boundingRadius,
     )
-    l.y = clamp(
+    const targetY = clamp(
       cy + jitter,
-      l.shape.halfHeight,
-      containerHeight - l.shape.halfHeight,
+      l.boundingRadius,
+      containerHeight - l.boundingRadius,
     )
+
+    for (const n of l.outer) {
+      n.x = targetX + n.restX
+      n.y = targetY + n.restY
+      n.vx = 0
+      n.vy = 0
+    }
+    l.cx = targetX
+    l.cy = targetY
+    l.angle = 0
+    l.targetX = targetX
+    l.targetY = targetY
+
     cursor += w + GAP
   })
 }
 
-/** Web font metrics can't be known before the font actually loads, and
- *  measuring against the fallback would calibrate every collision shape
- *  wrong. Waits, with a short timeout so a font failure can't leave the
- *  stage blank forever. */
-async function waitForFont(): Promise<void> {
-  try {
-    await Promise.race([
-      document.fonts.load(FONT_SPEC),
-      new Promise((resolve) => setTimeout(resolve, 2000)),
-    ])
-  } catch {
-    // Proceed with whatever the fallback stack renders.
+/** A smooth closed curve through a polygon's edge midpoints, using each
+ *  original vertex as the control point for the curve either side of it —
+ *  a cheap, always-stable way to turn a modest point count into something
+ *  that reads as a soft, rounded outline rather than a faceted polygon. */
+function smoothPath(points: Vec[]): string {
+  const n = points.length
+  if (n < 3) return ''
+  const mid = (a: Vec, b: Vec) => `${(a.x + b.x) / 2} ${(a.y + b.y) / 2}`
+
+  let d = `M ${mid(points[n - 1], points[0])} `
+  for (let i = 0; i < n; i++) {
+    const curr = points[i]
+    const next = points[(i + 1) % n]
+    d += `Q ${curr.x} ${curr.y} ${mid(curr, next)} `
   }
+  return d + 'Z'
+}
+
+function buildPathD(letter: Letter): string {
+  let d = smoothPath(letter.outer)
+  for (const hole of liveHoles(letter)) {
+    d += ' ' + smoothPath(hole)
+  }
+  return d
 }
 
 export default function InflatedLetters() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const letterElsRef = useRef<Array<HTMLDivElement | null>>([])
-  const [ready, setReady] = useState(false)
+  const pathElsRef = useRef<Array<SVGPathElement | null>>([])
 
   const sizeRef = useRef({
     width: CONTAINER_DEFAULT_WIDTH,
     height: CONTAINER_DEFAULT_HEIGHT,
   })
-  const lettersRef = useRef<Letter[]>([])
+
+  const lettersRef = useRef<Letter[]>(
+    (() => {
+      const letters = LETTER_CHARS.map((char) =>
+        createLetter(char, 0, 0, BASE_SIZE),
+      )
+      layoutRow(
+        letters,
+        CONTAINER_DEFAULT_WIDTH,
+        CONTAINER_DEFAULT_HEIGHT,
+        BASE_SIZE,
+      )
+      return letters
+    })(),
+  )
 
   const rafRef = useRef(0)
   const lastRef = useRef(0)
   const heldIndexRef = useRef<number | null>(null)
-  const pointerLastRef = useRef({ x: 0, y: 0, t: 0 })
   const resizingRef = useRef(false)
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
+  const firmnessRef = useRef(firmnessFromInflation(DEFAULT_INFLATION))
 
   const timeScale = useTimeScale()
   const stageScale = useStageScale()
@@ -127,25 +175,17 @@ export default function InflatedLetters() {
   const paint = useCallback(() => {
     const letters = lettersRef.current
     for (let i = 0; i < letters.length; i++) {
-      const el = letterElsRef.current[i]
-      const l = letters[i]
-      if (!el || !l) continue
-      const stretch = 1 - l.squish
-      const squash = 1 + l.squish * 0.6
-      const deg = (l.squishAngle * 180) / Math.PI
-      el.style.transform =
-        `translate3d(${l.x - l.shape.halfWidth}px, ${l.y - l.shape.halfHeight}px, 0) ` +
-        `rotate(${deg}deg) scale(${stretch}, ${squash}) rotate(${-deg}deg)`
+      const el = pathElsRef.current[i]
+      if (!el) continue
+      el.setAttribute('d', buildPathD(letters[i]))
     }
   }, [])
 
   const tick = useCallback(
     (now: number) => {
       // rAF timestamps and performance.now() can disagree by a hair under
-      // bursty input (several pointer events processed before the browser's
-      // next frame timestamp is settled) — clamp below zero the same way the
-      // top end is already clamped, or a negative dt silently skips every
-      // substep and the sim looks frozen.
+      // bursty input — clamp below zero, or a negative dt silently skips
+      // every substep and the sim looks frozen.
       const seconds =
         Math.max(Math.min((now - lastRef.current) / 1000, 1 / 30), 0) *
         timeScale.current
@@ -156,6 +196,7 @@ export default function InflatedLetters() {
         sizeRef.current.width,
         sizeRef.current.height,
         seconds,
+        firmnessRef.current,
       )
       paint()
 
@@ -170,44 +211,15 @@ export default function InflatedLetters() {
     rafRef.current = requestAnimationFrame(tick)
   }, [tick])
 
-  // Measure the real rendered glyphs — once the web font has actually
-  // loaded — build each letter's collision shape from that measurement, and
-  // lay out the starting arrangement, all before this ever paints. No flash
-  // of wrongly-sized or wrongly-positioned letters.
+  // The starting arrangement is built synchronously above (no web font to
+  // wait on — the outlines are hand-authored data, not a measured glyph) —
+  // just paint it once before the browser's first real frame.
   useLayoutEffect(() => {
-    let cancelled = false
-
-    void waitForFont().then(() => {
-      if (cancelled) return
-      const letters = LETTER_CHARS.map((char, i) => {
-        const rect = letterElsRef.current[i]?.getBoundingClientRect()
-        const width = rect?.width || 80
-        const height = rect?.height || 96
-        return createLetter(
-          char,
-          0,
-          0,
-          resolveLetterShape(char, width, height),
-          width,
-          height,
-        )
-      })
-      layoutRow(letters, sizeRef.current.width, sizeRef.current.height)
-      lettersRef.current = letters
-      paint()
-      setReady(true)
-      // The hand-authored starting row is usually already clear of overlap,
-      // but glyph metrics vary slightly by platform — wake the sim so any
-      // that isn't settles itself immediately rather than sitting frozen
-      // until the reader happens to touch something.
-      wake()
-    })
-
+    paint()
     return () => {
-      cancelled = true
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
-  }, [paint, wake])
+  }, [paint])
 
   const toLocal = useCallback(
     (clientX: number, clientY: number) => {
@@ -224,58 +236,54 @@ export default function InflatedLetters() {
   )
 
   const handleLetterDown = useCallback(
-    (index: number) => (event: ReactPointerEvent<HTMLDivElement>) => {
+    (index: number) => (event: ReactPointerEvent<SVGPathElement>) => {
       const letter = lettersRef.current[index]
       if (!letter) return
       event.currentTarget.setPointerCapture(event.pointerId)
       heldIndexRef.current = index
       letter.held = true
+      const { width, height } = sizeRef.current
       const p = toLocal(event.clientX, event.clientY)
-      pointerLastRef.current = { x: p.x, y: p.y, t: performance.now() }
+      letter.targetX = clamp(
+        p.x,
+        letter.boundingRadius,
+        width - letter.boundingRadius,
+      )
+      letter.targetY = clamp(
+        p.y,
+        letter.boundingRadius,
+        height - letter.boundingRadius,
+      )
       wake()
     },
     [toLocal, wake],
   )
 
   const handleLetterMove = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<SVGPathElement>) => {
       const index = heldIndexRef.current
       const letter = index === null ? null : lettersRef.current[index]
       if (!letter) return
 
       const { width, height } = sizeRef.current
       const p = toLocal(event.clientX, event.clientY)
-      const now = performance.now()
-      const dt = Math.max((now - pointerLastRef.current.t) / 1000, 1 / 240)
-
-      const nextX = clamp(
+      letter.targetX = clamp(
         p.x,
-        letter.shape.halfWidth,
-        width - letter.shape.halfWidth,
+        letter.boundingRadius,
+        width - letter.boundingRadius,
       )
-      const nextY = clamp(
+      letter.targetY = clamp(
         p.y,
-        letter.shape.halfHeight,
-        height - letter.shape.halfHeight,
+        letter.boundingRadius,
+        height - letter.boundingRadius,
       )
-
-      // Smoothed velocity from the drag, so a release carries a believable
-      // fling instead of whatever the last, possibly noisy, pointer event was.
-      const rawVx = (nextX - letter.x) / dt
-      const rawVy = (nextY - letter.y) / dt
-      letter.vx = letter.vx * 0.5 + rawVx * 0.5
-      letter.vy = letter.vy * 0.5 + rawVy * 0.5
-
-      letter.x = nextX
-      letter.y = nextY
-      pointerLastRef.current = { x: p.x, y: p.y, t: now }
       wake()
     },
     [toLocal, wake],
   )
 
   const handleLetterUp = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<SVGPathElement>) => {
       const index = heldIndexRef.current
       const letter = index === null ? null : lettersRef.current[index]
       if (letter) letter.held = false
@@ -331,35 +339,36 @@ export default function InflatedLetters() {
   )
 
   // Global — one write to the container's own custom property reaches every
-  // letter through CSS inheritance, no per-bubble loop needed for the visual
-  // half. The collision shapes are a separate concern: font scaling is
-  // linear, so each letter's shape is rebuilt from its cached base
-  // measurement rather than re-reading the DOM on every drag tick.
+  // letter through CSS inheritance. Rebuilding the rest geometry doesn't
+  // move anything itself; the shape-matching spring animates the grow or
+  // shrink over the next several frames, which is what makes this read as
+  // the letter actually inflating rather than snapping to a new size.
   const handleSizeChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
-      const fontSize = event.currentTarget.valueAsNumber
-      containerRef.current?.style.setProperty(
-        '--letters-font-size',
-        `${fontSize}px`,
-      )
+      const size = event.currentTarget.valueAsNumber
       for (const letter of lettersRef.current) {
-        letter.shape = rescaleLetterShape(letter, fontSize)
+        rescaleLetter(letter, size)
       }
       wake()
     },
     [wake],
   )
 
-  // Purely visual — the gradient contrast, gloss opacity, and shadow depth
-  // that sell "full of air" vs. "flat". Never touches the collision shape,
-  // deliberately: the ask was two independent controls, not one disguised
-  // as two.
+  // Inflation has a visual half (gradient/gloss/shadow, via the CSS custom
+  // property) and a physical half (firmness — how hard the shape resists
+  // deformation) — deliberately not a size change, so a letter's hit area
+  // stays put regardless of how puffy or floppy it currently looks.
   const handleInflationChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
-      const inflation = event.currentTarget.valueAsNumber / 100
-      containerRef.current?.style.setProperty('--inflation', String(inflation))
+      const inflation = event.currentTarget.valueAsNumber
+      containerRef.current?.style.setProperty(
+        '--inflation',
+        String(inflation / 100),
+      )
+      firmnessRef.current = firmnessFromInflation(inflation)
+      wake()
     },
-    [],
+    [wake],
   )
 
   return (
@@ -373,35 +382,81 @@ export default function InflatedLetters() {
             top: ANCHOR_Y,
             width: sizeRef.current.width,
             height: sizeRef.current.height,
-            '--letters-font-size': `${BASE_FONT_SIZE}px`,
             '--inflation': DEFAULT_INFLATION / 100,
           } as CSSProperties
         }
       >
-        {LETTER_CHARS.map((char, i) => (
-          <div
-            key={i}
-            className="letters__bubble"
-            style={
-              {
-                '--tint': LETTER_COLORS[i],
-                opacity: ready ? 1 : 0,
-              } as CSSProperties
-            }
-            ref={(el) => {
-              letterElsRef.current[i] = el
-            }}
-            onPointerDown={handleLetterDown(i)}
-            onPointerMove={handleLetterMove}
-            onPointerUp={handleLetterUp}
-            onPointerCancel={handleLetterUp}
-          >
-            <span className="letters__fill">{char}</span>
-            <span className="letters__gloss" aria-hidden="true">
-              {char}
-            </span>
-          </div>
-        ))}
+        <svg
+          className="letters__svg"
+          width={sizeRef.current.width}
+          height={sizeRef.current.height}
+        >
+          <defs>
+            <radialGradient
+              id="letters-gloss"
+              gradientUnits="objectBoundingBox"
+              cx="0.32"
+              cy="0.24"
+              r="0.55"
+            >
+              <stop
+                offset="0%"
+                stopColor="#ffffff"
+                style={{ stopOpacity: 'calc(1.1 * var(--inflation, 0.7))' }}
+              />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+            </radialGradient>
+            <linearGradient
+              id="letters-shade"
+              gradientUnits="objectBoundingBox"
+              x1="0.15"
+              y1="0.05"
+              x2="0.9"
+              y2="1"
+            >
+              <stop offset="0%" stopColor="#000000" stopOpacity="0" />
+              <stop
+                offset="100%"
+                stopColor="#000000"
+                style={{ stopOpacity: 'calc(0.55 * var(--inflation, 0.7))' }}
+              />
+            </linearGradient>
+          </defs>
+
+          {LETTER_CHARS.map((_char, i) => (
+            <g
+              key={i}
+              className="letters__bubble"
+              style={{ '--tint': LETTER_COLORS[i] } as CSSProperties}
+            >
+              <path
+                id={`letters-path-${i}`}
+                ref={(el) => {
+                  pathElsRef.current[i] = el
+                }}
+                className="letters__fillPath"
+                fill={LETTER_COLORS[i]}
+                fillRule="evenodd"
+                onPointerDown={handleLetterDown(i)}
+                onPointerMove={handleLetterMove}
+                onPointerUp={handleLetterUp}
+                onPointerCancel={handleLetterUp}
+              />
+              <use
+                href={`#letters-path-${i}`}
+                fill="url(#letters-shade)"
+                fillRule="evenodd"
+                pointerEvents="none"
+              />
+              <use
+                href={`#letters-path-${i}`}
+                fill="url(#letters-gloss)"
+                fillRule="evenodd"
+                pointerEvents="none"
+              />
+            </g>
+          ))}
+        </svg>
 
         <div
           className="letters__handle"
@@ -421,9 +476,9 @@ export default function InflatedLetters() {
           <input
             type="range"
             className="letters__slider"
-            min={MIN_FONT_SIZE}
-            max={MAX_FONT_SIZE}
-            defaultValue={BASE_FONT_SIZE}
+            min={MIN_SIZE}
+            max={MAX_SIZE}
+            defaultValue={BASE_SIZE}
             onChange={handleSizeChange}
           />
         </label>

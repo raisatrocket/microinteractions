@@ -20,70 +20,38 @@
 /* ------------------------------------------------------------------ *
  * Letter bubbles
  *
- * Two stacked copies of the same glyph, both clipped to the letterform via
- * background-clip: text — one carries the gradient fill, the other a soft
- * highlight blob — so both effects are confined exactly to the printed
- * shape rather than a bounding box. The wrapper is sized by the *first*
- * span's normal-flow layout; the second is absolutely positioned over it.
+ * Each letter is a soft body: ~14-21 independently simulated boundary
+ * points, so its rendered path is redrawn every frame rather than moved
+ * with a transform. One real <path> carries the flat fill and the pointer
+ * handlers; two pointer-events:none <use> clones of the same path lay a
+ * shading gradient and a gloss highlight over the identical geometry, so
+ * both effects hug the actual (deforming) letter shape instead of a
+ * bounding box.
  * ------------------------------------------------------------------ */
 
-.letters__bubble {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: inline-block;
-  font-family: 'Baloo 2', var(--font-sans);
-  font-weight: 800;
-  /* Set on .letters__container and inherited — the size slider writes one
-     custom property there and every letter picks it up, no per-bubble loop. */
-  font-size: var(--letters-font-size, 106px);
-  line-height: 1;
-  cursor: grab;
-  touch-action: none;
-  will-change: transform;
-  user-select: none;
-  -webkit-user-select: none;
-  /* --inflation (0-1, also set on the container and inherited) scales the
-     shadow depth alongside the fill/gloss below — together they're what
-     "full of air" vs. "flat" actually means here. */
-  filter: drop-shadow(
-    0 calc(12px * var(--inflation, 0.7)) calc(18px * var(--inflation, 0.7))
-      rgba(0, 0, 0, calc(0.5 * var(--inflation, 0.7)))
-  );
-  transition: opacity 220ms ease;
-}
-
-.letters__bubble:active {
-  cursor: grabbing;
-}
-
-.letters__fill {
-  position: relative;
-  display: inline-block;
-  background: linear-gradient(
-    155deg,
-    color-mix(in oklab, var(--tint) calc(58% * var(--inflation, 0.7)), white) 0%,
-    var(--tint) 52%,
-    color-mix(in oklab, var(--tint) calc(95% * var(--inflation, 0.7)), black)
-      100%
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.letters__gloss {
+.letters__svg {
   position: absolute;
   inset: 0;
-  background: radial-gradient(
-    ellipse 55% 40% at 30% 20%,
-    rgba(255, 255, 255, calc(1.15 * var(--inflation, 0.7))),
-    transparent 68%
+  display: block;
+}
+
+.letters__bubble {
+  /* --inflation (0-1, set on the container and inherited) scales the
+     shadow depth alongside the shade/gloss gradients defined in the SVG
+     markup — together they're what "full of air" vs. "flat" means here. */
+  filter: drop-shadow(
+    0 calc(10px * var(--inflation, 0.7)) calc(16px * var(--inflation, 0.7))
+      rgba(0, 0, 0, calc(0.45 * var(--inflation, 0.7)))
   );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  pointer-events: none;
+}
+
+.letters__fillPath {
+  cursor: grab;
+  touch-action: none;
+}
+
+.letters__fillPath:active {
+  cursor: grabbing;
 }
 
 /* ------------------------------------------------------------------ *
