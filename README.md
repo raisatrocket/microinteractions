@@ -45,9 +45,13 @@ scaled down as one piece on narrow viewports, so the composition never reflows.
 }
 ```
 
-That is the whole registration. The timeline entry, the deep link, the embed
-route, the scroll spy, and the window chrome all follow from that one object.
-Experiments are lazily imported and only mount once you scroll near them.
+That is the whole registration. The timeline entry, the sidebar entry, the deep
+link, the embed route, the scroll spy, and the window chrome all follow from
+that one object. Experiments are lazily imported and only mount once you scroll
+near them.
+
+The sidebar appears at 1080px and up; below that the sticky top bar takes over
+the same job, so the two are never on screen together.
 
 ---
 

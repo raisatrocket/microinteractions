@@ -9,7 +9,11 @@
   background:
     radial-gradient(
       520px 400px at 50% 45%,
-      color-mix(in oklab, var(--accent) calc(4% * var(--proximity)), transparent),
+      color-mix(
+        in oklab,
+        var(--accent) calc(4% * var(--proximity)),
+        transparent
+      ),
       transparent 70%
     ),
     var(--bg-elev);

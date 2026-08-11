@@ -1,3 +1,26 @@
+/* ------------------------------------------------------------------ *
+ * Layout — side navigation plus the log
+ *
+ * Below 1080px the sidebar is dropped and the sticky top bar takes over
+ * the same job, so the two are never on screen together.
+ * ------------------------------------------------------------------ */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 100dvh;
+}
+
+.layout__main {
+  min-width: 0;
+}
+
+@media (min-width: 1080px) {
+  .layout {
+    grid-template-columns: var(--sidenav-w) minmax(0, 1fr);
+  }
+}
+
 .shell {
   width: 100%;
   max-width: calc(800px + var(--rail) + var(--gutter) * 2);
@@ -8,6 +31,13 @@
 /* ------------------------------------------------------------------ *
  * Top bar
  * ------------------------------------------------------------------ */
+
+/* The sidebar supersedes it on wide viewports. */
+@media (min-width: 1080px) {
+  .topbar {
+    display: none;
+  }
+}
 
 .topbar {
   position: sticky;

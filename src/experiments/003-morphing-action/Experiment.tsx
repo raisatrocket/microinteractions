@@ -92,7 +92,13 @@ function Spinner() {
 
 function Check() {
   return (
-    <svg width="17" height="17" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 18 18"
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         className="morph__check"
         d="M3.6 9.4l3.5 3.5 7-7.4"

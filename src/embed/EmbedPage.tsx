@@ -20,7 +20,8 @@ export default function EmbedPage() {
     .replace(/\/+$/, '')
   const experiment = findExperiment(slug)
 
-  const showChrome = new URLSearchParams(window.location.search).get('chrome') === '1'
+  const showChrome =
+    new URLSearchParams(window.location.search).get('chrome') === '1'
 
   const fitRef = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(1)
@@ -35,9 +36,7 @@ export default function EmbedPage() {
     const measure = () => {
       const { clientWidth, clientHeight } = fit
       if (clientWidth <= 0 || clientHeight <= 0) return
-      setScale(
-        Math.min(clientWidth / STAGE_WIDTH, clientHeight / STAGE_HEIGHT),
-      )
+      setScale(Math.min(clientWidth / STAGE_WIDTH, clientHeight / STAGE_HEIGHT))
     }
 
     measure()

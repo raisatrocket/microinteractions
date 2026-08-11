@@ -197,10 +197,7 @@ export function useSpring2D(
   )
 
   useEffect(() => {
-    frameRef.current(
-      { x: x.current.value, y: y.current.value },
-      { x: 0, y: 0 },
-    )
+    frameRef.current({ x: x.current.value, y: y.current.value }, { x: 0, y: 0 })
   }, [])
 
   useEffect(
@@ -231,10 +228,13 @@ export function useScaledTimeout(): (fn: () => void, ms: number) => () => void {
 
   return useCallback(
     (fn: () => void, ms: number) => {
-      const id = setTimeout(() => {
-        timers.current.delete(id)
-        fn()
-      }, ms / Math.max(timeScale.current, 0.01))
+      const id = setTimeout(
+        () => {
+          timers.current.delete(id)
+          fn()
+        },
+        ms / Math.max(timeScale.current, 0.01),
+      )
       timers.current.add(id)
       return () => {
         clearTimeout(id)

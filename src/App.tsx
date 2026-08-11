@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import ExperimentSection from './components/ExperimentSection'
+import SideNav from './components/SideNav'
 import { experiments, findExperiment, ordinal } from './experiments/registry'
 import './app.css'
 
@@ -31,10 +32,13 @@ export default function App() {
   const sections = useRef(new Map<string, HTMLElement>())
   const [active, setActive] = useState('')
 
-  const registerSection = useCallback((slug: string, el: HTMLElement | null) => {
-    if (el) sections.current.set(slug, el)
-    else sections.current.delete(slug)
-  }, [])
+  const registerSection = useCallback(
+    (slug: string, el: HTMLElement | null) => {
+      if (el) sections.current.set(slug, el)
+      else sections.current.delete(slug)
+    },
+    [],
+  )
 
   const scrollToSlug = useCallback((slug: string, smooth: boolean) => {
     const el = sections.current.get(slug)
@@ -57,6 +61,15 @@ export default function App() {
     },
     [scrollToSlug],
   )
+
+  const goHome = useCallback(() => {
+    window.history.pushState(null, '', '/')
+    setActive('')
+    window.scrollTo({
+      top: 0,
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    })
+  }, [])
 
   // The URL encodes scroll position, so let it — not the browser — decide where
   // a reload lands.
@@ -147,92 +160,96 @@ export default function App() {
   }, [active])
 
   const activeIndex = experiments.findIndex((entry) => entry.slug === active)
-  const activeExperiment = activeIndex >= 0 ? experiments[activeIndex] : undefined
+  const activeExperiment =
+    activeIndex >= 0 ? experiments[activeIndex] : undefined
 
   return (
-    <>
-      <header className="topbar">
-        <div className="shell topbar__inner">
-          <a
-            className="topbar__brand"
-            href="/"
-            onClick={(event) => {
-              if (event.metaKey || event.ctrlKey || event.shiftKey) return
-              event.preventDefault()
-              window.history.pushState(null, '', '/')
-              setActive('')
-              window.scrollTo({
-                top: 0,
-                behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-              })
-            }}
-          >
-            <span className="topbar__mark" aria-hidden="true" />
-            Microinteractions
-          </a>
+    <div className="layout">
+      <SideNav active={active} onNavigate={navigate} onHome={goHome} />
 
-          <div className="topbar__now mono" aria-live="polite">
-            {activeExperiment ? (
-              <>
+      <div className="layout__main">
+        <header className="topbar">
+          <div className="shell topbar__inner">
+            <a
+              className="topbar__brand"
+              href="/"
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey) return
+                event.preventDefault()
+                goHome()
+              }}
+            >
+              <span className="topbar__mark" aria-hidden="true" />
+              Microinteractions
+            </a>
+
+            <div className="topbar__now mono" aria-live="polite">
+              {activeExperiment ? (
+                <>
+                  <span className="topbar__count">
+                    {ordinal(activeIndex)} —{' '}
+                    {experiments.length.toString().padStart(3, '0')}
+                  </span>
+                  <span className="topbar__label">
+                    {activeExperiment.title}
+                  </span>
+                </>
+              ) : (
                 <span className="topbar__count">
-                  {ordinal(activeIndex)} — {experiments.length.toString().padStart(3, '0')}
+                  {experiments.length} experiment
+                  {experiments.length === 1 ? '' : 's'}
                 </span>
-                <span className="topbar__label">{activeExperiment.title}</span>
-              </>
-            ) : (
-              <span className="topbar__count">
-                {experiments.length} experiment{experiments.length === 1 ? '' : 's'}
-              </span>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="shell">
-        <section className="hero">
-          <p className="hero__eyebrow mono">A running log</p>
-          <h1 className="hero__title">
-            Small interactions,
-            <br />
-            studied at <span className="hero__accent">800 × 600</span>.
-          </h1>
-          <p className="hero__lede">
-            Every experiment below lives in a fixed 800 × 600 stage — the same
-            frame each time, so the only variable is the interaction. Slow any of
-            them to a quarter speed, drop a grid over it, or replay it from the
-            window chrome. Each one has its own link.
+        <main className="shell">
+          <section className="hero">
+            <p className="hero__eyebrow mono">A running log</p>
+            <h1 className="hero__title">
+              Small interactions,
+              <br />
+              studied at <span className="hero__accent">800 × 600</span>.
+            </h1>
+            <p className="hero__lede">
+              Every experiment below lives in a fixed 800 × 600 stage — the same
+              frame each time, so the only variable is the interaction. Slow any
+              of them to a quarter speed, drop a grid over it, or replay it from
+              the window chrome. Each one has its own link.
+            </p>
+          </section>
+
+          <div className="timeline">
+            {experiments.map((experiment, index) => (
+              <ExperimentSection
+                key={experiment.slug}
+                experiment={experiment}
+                index={ordinal(index)}
+                isActive={experiment.slug === active}
+                onNavigate={navigate}
+                sectionRef={registerSection}
+              />
+            ))}
+
+            <div className="timeline__end">
+              <span className="timeline__endNode" aria-hidden="true" />
+              <p className="mono">More soon</p>
+            </div>
+          </div>
+        </main>
+
+        <footer className="footer shell">
+          <p>
+            Built with Vite and React. Springs are integrated by hand in{' '}
+            <code>src/lib/spring.ts</code> — no animation library.
           </p>
-        </section>
-
-        <div className="timeline">
-          {experiments.map((experiment, index) => (
-            <ExperimentSection
-              key={experiment.slug}
-              experiment={experiment}
-              index={ordinal(index)}
-              isActive={experiment.slug === active}
-              onNavigate={navigate}
-              sectionRef={registerSection}
-            />
-          ))}
-
-          <div className="timeline__end">
-            <span className="timeline__endNode" aria-hidden="true" />
-            <p className="mono">More soon</p>
-          </div>
-        </div>
-      </main>
-
-      <footer className="footer shell">
-        <p>
-          Built with Vite and React. Springs are integrated by hand in{' '}
-          <code>src/lib/spring.ts</code> — no animation library.
-        </p>
-        <p className="footer__stamp mono">
-          {__BUILD_REF__}
-          {__BUILD_SHA__ ? ` · ${__BUILD_SHA__}` : ''}
-        </p>
-      </footer>
-    </>
+          <p className="footer__stamp mono">
+            {__BUILD_REF__}
+            {__BUILD_SHA__ ? ` · ${__BUILD_SHA__}` : ''}
+          </p>
+        </footer>
+      </div>
+    </div>
   )
 }

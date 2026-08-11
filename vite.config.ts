@@ -37,8 +37,16 @@ function stampPlugin(stamp: { ref: string; sha: string }): Plugin {
     name: 'build-stamp',
     transformIndexHtml() {
       return [
-        { tag: 'meta', attrs: { name: 'build-ref', content: stamp.ref }, injectTo: 'head' },
-        { tag: 'meta', attrs: { name: 'build-sha', content: stamp.sha }, injectTo: 'head' },
+        {
+          tag: 'meta',
+          attrs: { name: 'build-ref', content: stamp.ref },
+          injectTo: 'head',
+        },
+        {
+          tag: 'meta',
+          attrs: { name: 'build-sha', content: stamp.sha },
+          injectTo: 'head',
+        },
       ]
     },
   }

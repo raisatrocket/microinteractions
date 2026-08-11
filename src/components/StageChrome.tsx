@@ -77,7 +77,13 @@ export default function StageChrome({
 
 function GridIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         d="M1 5h12M1 9h12M5 1v12M9 1v12"
         stroke="currentColor"
@@ -90,7 +96,13 @@ function GridIcon() {
 
 function ReplayIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         d="M12 7a5 5 0 1 1-1.6-3.66"
         stroke="currentColor"

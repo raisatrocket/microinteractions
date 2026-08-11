@@ -58,7 +58,9 @@ export default function Stage({
     >
       <StageContext.Provider value={context}>
         <div className="stage__mount" key={runId}>
-          <Suspense fallback={<div className="stage__loading" aria-hidden="true" />}>
+          <Suspense
+            fallback={<div className="stage__loading" aria-hidden="true" />}
+          >
             {children}
           </Suspense>
         </div>

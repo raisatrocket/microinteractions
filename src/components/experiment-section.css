@@ -6,6 +6,13 @@
   scroll-margin-top: 76px;
 }
 
+/* No top bar at this width, so nothing to clear. */
+@media (min-width: 1080px) {
+  .exp {
+    scroll-margin-top: 32px;
+  }
+}
+
 .exp:first-of-type {
   padding-top: clamp(24px, 4vw, 48px);
 }

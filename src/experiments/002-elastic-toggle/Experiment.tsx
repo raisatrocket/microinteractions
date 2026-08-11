@@ -65,9 +65,7 @@ export default function ElasticToggle() {
         <div className="elastic__meter" aria-hidden="true">
           <span className="elastic__meterFill" />
         </div>
-        <p className="elastic__caption mono">
-          knob velocity → deformation
-        </p>
+        <p className="elastic__caption mono">knob velocity → deformation</p>
       </div>
     </div>
   )

@@ -139,7 +139,13 @@ function formatDate(iso: string): string {
 
 function EmbedIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         d="M5.2 3.6L1.8 7l3.4 3.4M8.8 3.6L12.2 7l-3.4 3.4"
         stroke="currentColor"
@@ -153,7 +159,13 @@ function EmbedIcon() {
 
 function LinkIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         d="M5.8 8.2a2.4 2.4 0 0 0 3.4 0l2-2a2.4 2.4 0 0 0-3.4-3.4l-.7.7"
         stroke="currentColor"

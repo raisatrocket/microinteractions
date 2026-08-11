@@ -58,10 +58,12 @@ button {
  * ------------------------------------------------------------------ */
 
 :root {
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas,
-    'Liberation Mono', monospace;
+  --font-sans:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono',
+    monospace;
 
   /* Surfaces */
   --bg: #08080a;
@@ -90,6 +92,7 @@ button {
   /* Page rhythm */
   --gutter: 32px;
   --rail: 44px;
+  --sidenav-w: 260px;
 }
 
 @media (max-width: 720px) {
