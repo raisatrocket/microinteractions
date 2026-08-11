@@ -228,6 +228,10 @@ export default function App() {
           Built with Vite and React. Springs are integrated by hand in{' '}
           <code>src/lib/spring.ts</code> — no animation library.
         </p>
+        <p className="footer__stamp mono">
+          {__BUILD_REF__}
+          {__BUILD_SHA__ ? ` · ${__BUILD_SHA__}` : ''}
+        </p>
       </footer>
     </>
   )

@@ -170,10 +170,22 @@
  * ------------------------------------------------------------------ */
 
 .footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
   padding-block: 32px 56px;
   border-top: 1px solid var(--line-soft);
   color: var(--text-faint);
   font-size: 13px;
+}
+
+/* Which branch and commit this page was built from. */
+.footer__stamp {
+  color: var(--text-faint);
+  opacity: 0.7;
+  flex: none;
 }
 
 .footer code {
