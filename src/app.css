@@ -181,11 +181,14 @@
   font-size: 13px;
 }
 
-/* Which branch and commit this page was built from. */
+/* Which branch and commit this page was built from. Refs and SHAs are
+   case-sensitive, so this is the one mono label that is not uppercased. */
 .footer__stamp {
   color: var(--text-faint);
   opacity: 0.7;
   flex: none;
+  text-transform: none;
+  letter-spacing: 0.02em;
 }
 
 .footer code {
