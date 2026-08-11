@@ -208,15 +208,13 @@ export default function App() {
           <section className="hero">
             <p className="hero__eyebrow mono">A running log</p>
             <h1 className="hero__title">
-              Small interactions,
-              <br />
-              studied at <span className="hero__accent">800 × 600</span>.
+              Lab of <span className="hero__accent">Experimentation</span>.
             </h1>
             <p className="hero__lede">
-              Every experiment below lives in a fixed 800 × 600 stage — the same
-              frame each time, so the only variable is the interaction. Slow any
-              of them to a quarter speed, drop a grid over it, or replay it from
-              the window chrome. Each one has its own link.
+              Consistently tinkering and exploring, leaving it here for everyone
+              to view and enjoy. Check back in from time to time to see things
+              like wonky hover states, unnecessarily complex micro-interactions,
+              and other fun explorations.
             </p>
           </section>
 

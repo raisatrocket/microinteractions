@@ -130,7 +130,6 @@
 
 .hero__accent {
   color: var(--accent);
-  font-variant-numeric: tabular-nums;
 }
 
 .hero__lede {
