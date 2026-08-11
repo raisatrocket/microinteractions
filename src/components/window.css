@@ -20,9 +20,6 @@
   background: var(--bg-elev);
   border: 1px solid var(--line);
   border-radius: 0 0 var(--radius) var(--radius);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.03) inset,
-    0 24px 60px -30px rgba(0, 0, 0, 0.9);
 
   /* The frame scrolls on narrow viewports so content never shrinks, but the
      scroll itself is the affordance — a visible scrollbar under an 800×600
