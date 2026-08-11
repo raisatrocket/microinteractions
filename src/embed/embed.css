@@ -1,0 +1,26 @@
+.embed {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg-elev);
+}
+
+.embed__fit {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.embed__box {
+  position: relative;
+}
+
+.embed--empty {
+  place-content: center;
+  justify-items: center;
+  display: grid;
+  color: var(--text-faint);
+}

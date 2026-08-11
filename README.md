@@ -45,9 +45,51 @@ scaled down as one piece on narrow viewports, so the composition never reflows.
 }
 ```
 
-That is the whole registration. The timeline entry, the deep link, the scroll
-spy, and the window chrome all follow from that one object. Experiments are
-lazily imported and only mount once you scroll near them.
+That is the whole registration. The timeline entry, the deep link, the embed
+route, the scroll spy, and the window chrome all follow from that one object.
+Experiments are lazily imported and only mount once you scroll near them.
+
+---
+
+## Embedding an experiment elsewhere
+
+Every experiment is also served standalone at `/embed/<slug>`, with the
+timeline, the copy, and the window chrome stripped away — just the stage,
+scaled to fill whatever box the host gives it.
+
+The **Copy embed** button on each timeline entry puts a ready snippet on your
+clipboard:
+
+```html
+<iframe
+  src="https://your-domain/embed/elastic-toggle"
+  title="Elastic Toggle"
+  loading="lazy"
+  style="width:100%;aspect-ratio:4/3;border:0;display:block;border-radius:12px"
+></iframe>
+```
+
+In **Framer**: add an Embed element, choose *HTML*, and paste. Give it a fill
+width and the `aspect-ratio` in the snippet keeps the height correct at every
+breakpoint.
+
+The snippet is built from the origin you copy it from, so copy from the
+deployed site — copying from `localhost:5173` will paste a localhost URL.
+
+**Sizing.** The stage is scaled to *fit*, by whichever axis is tighter, so an
+iframe at any ratio letterboxes instead of cropping. 4:3 matches the stage
+exactly and wastes no space, which is why it is the default in the snippet.
+
+**Options.**
+
+| Query | Effect |
+| --- | --- |
+| *(none)* | Bare stage. The default, and what you usually want in a designed page. |
+| `?chrome=1` | Keeps the replay / speed / grid controls above the stage. Useful for one-shot interactions like Morphing Action, where a visitor may want to replay it. |
+
+**Framing is allowed from anywhere** — nothing sets `X-Frame-Options` or a
+`frame-ancestors` policy. If you later want to restrict embedding to your own
+domain, add a `frame-ancestors` header for `/embed/*` in `vercel.json`.
 
 ---
 

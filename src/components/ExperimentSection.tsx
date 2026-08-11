@@ -1,8 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback } from 'react'
 
+import { useCopy } from '../lib/useCopy'
 import type { Experiment } from '../experiments/registry'
 import Window from './Window'
 import './experiment-section.css'
+
+/**
+ * The snippet to paste into an Embed element on another site. Kept as an
+ * aspect-ratio box rather than fixed pixels so it stays 4:3 at whatever width
+ * the host layout gives it — which is the ratio the stage is built at.
+ */
+function embedSnippet(origin: string, slug: string, title: string): string {
+  return `<iframe
+  src="${origin}/embed/${slug}"
+  title="${title}"
+  loading="lazy"
+  style="width:100%;aspect-ratio:4/3;border:0;display:block;border-radius:12px"
+></iframe>`
+}
 
 type Props = {
   experiment: Experiment
@@ -21,23 +36,16 @@ export default function ExperimentSection({
 }: Props) {
   const { slug, title, blurb, tags, date, Component } = experiment
 
-  const [copied, setCopied] = useState(false)
-  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const link = useCopy()
+  const embed = useCopy()
 
-  useEffect(() => () => clearTimeout(copyTimer.current), [])
+  const copyLink = useCallback(() => {
+    void link.copy(`${window.location.origin}/${slug}`)
+  }, [link, slug])
 
-  const copyLink = useCallback(async () => {
-    const url = `${window.location.origin}/${slug}`
-    try {
-      await navigator.clipboard.writeText(url)
-    } catch {
-      // Clipboard can be blocked (insecure origin, permissions). The link is
-      // still in the address bar, so fail quietly rather than alarm anyone.
-    }
-    setCopied(true)
-    clearTimeout(copyTimer.current)
-    copyTimer.current = setTimeout(() => setCopied(false), 1800)
-  }, [slug])
+  const copyEmbed = useCallback(() => {
+    void embed.copy(embedSnippet(window.location.origin, slug, title))
+  }, [embed, slug, title])
 
   return (
     <section
@@ -85,15 +93,28 @@ export default function ExperimentSection({
               ))}
             </ul>
 
-            <button
-              type="button"
-              className="exp__copy"
-              onClick={copyLink}
-              data-copied={copied || undefined}
-            >
-              <LinkIcon />
-              <span>{copied ? 'Copied' : 'Copy link'}</span>
-            </button>
+            <div className="exp__actions">
+              <button
+                type="button"
+                className="exp__copy"
+                onClick={copyLink}
+                data-copied={link.copied || undefined}
+              >
+                <LinkIcon />
+                <span>{link.copied ? 'Copied' : 'Copy link'}</span>
+              </button>
+
+              <button
+                type="button"
+                className="exp__copy"
+                onClick={copyEmbed}
+                data-copied={embed.copied || undefined}
+                title={`<iframe src="${'/embed/'}${slug}"> — paste into an Embed element`}
+              >
+                <EmbedIcon />
+                <span>{embed.copied ? 'Copied' : 'Copy embed'}</span>
+              </button>
+            </div>
           </div>
         </header>
 
@@ -114,6 +135,20 @@ function formatDate(iso: string): string {
     day: 'numeric',
     timeZone: 'UTC',
   })
+}
+
+function EmbedIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M5.2 3.6L1.8 7l3.4 3.4M8.8 3.6L12.2 7l-3.4 3.4"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
 }
 
 function LinkIcon() {

@@ -1,0 +1,75 @@
+.chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 38px;
+  padding: 0 8px 0 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.chrome__id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--text-faint);
+}
+
+.chrome__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  flex: none;
+}
+
+.chrome__name {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chrome__tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.chrome__dims {
+  color: var(--text-faint);
+  padding-right: 8px;
+}
+
+@media (max-width: 560px) {
+  .chrome__dims,
+  .chrome__name {
+    display: none;
+  }
+}
+
+.chrome__tool {
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.chrome__tool:hover {
+  background: var(--panel-hi);
+  color: var(--text);
+}
+
+.chrome__tool[data-active] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}

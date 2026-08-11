@@ -147,8 +147,15 @@
 }
 
 /* ------------------------------------------------------------------ *
- * Copy link
+ * Copy actions
  * ------------------------------------------------------------------ */
+
+.exp__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
 
 .exp__copy {
   display: inline-flex;
