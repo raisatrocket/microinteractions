@@ -184,14 +184,14 @@ function estimateNodeRadius(outer: Node[]): number {
       const next = outer[(i + 1) % outer.length]
       return sum + Math.hypot(next.restX - n.restX, next.restY - n.restY)
     }, 0) / outer.length
-  // Comfortably over half the average spacing, so neighboring points'
-  // collision circles overlap well and the boundary reads as a continuous
-  // skin with no gaps a neighbor's point could slip through between two
-  // sparse vertices — the rendered curve (a quadratic through each edge's
-  // midpoint, bulging slightly past the straight chord at sharp corners)
-  // needs that margin to never poke past what collision is actually
-  // checking.
-  return avg * 1.3
+  // A bit over half the average spacing, so neighboring points' collision
+  // circles overlap slightly and the boundary reads as a continuous skin
+  // rather than a string of separated dots. Kept close to the actual
+  // vertex spacing on purpose: bigger than this and letters stop short of
+  // where their drawn edges actually meet, reading as an invisible force
+  // field around each glyph instead of letting them come into real
+  // contact before anything deforms.
+  return avg * 0.62
 }
 
 function estimateBoundingRadius(outer: Node[]): number {
