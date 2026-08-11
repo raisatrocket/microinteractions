@@ -36,8 +36,12 @@ import type { Vec } from './outlines'
 
 export const LETTER_CHARS = ['B', 'U', 'B', 'B', 'L', 'E'] as const
 
-export const CONTAINER_MIN_WIDTH = 220
-export const CONTAINER_MIN_HEIGHT = 160
+// Six letters at BASE_SIZE physically cannot pack into a box much smaller
+// than this without overlapping — since overlap is never allowed (see
+// substep()'s collision pass), the minimum has to be a size that's
+// actually achievable, not an arbitrary small number.
+export const CONTAINER_MIN_WIDTH = 420
+export const CONTAINER_MIN_HEIGHT = 260
 export const CONTAINER_MAX_WIDTH = 680
 export const CONTAINER_MAX_HEIGHT = 400
 export const CONTAINER_DEFAULT_WIDTH = 640
@@ -180,10 +184,14 @@ function estimateNodeRadius(outer: Node[]): number {
       const next = outer[(i + 1) % outer.length]
       return sum + Math.hypot(next.restX - n.restX, next.restY - n.restY)
     }, 0) / outer.length
-  // A bit over half the average spacing, so neighboring points' collision
-  // circles overlap slightly and the boundary reads as a continuous skin
-  // rather than a string of separated dots.
-  return avg * 0.58
+  // Comfortably over half the average spacing, so neighboring points'
+  // collision circles overlap well and the boundary reads as a continuous
+  // skin with no gaps a neighbor's point could slip through between two
+  // sparse vertices — the rendered curve (a quadratic through each edge's
+  // midpoint, bulging slightly past the straight chord at sharp corners)
+  // needs that margin to never poke past what collision is actually
+  // checking.
+  return avg * 1.3
 }
 
 function estimateBoundingRadius(outer: Node[]): number {
@@ -205,7 +213,11 @@ const NODE_STIFFNESS = 2200
 const NODE_DAMPING = 18
 
 const MAX_WALL_PENETRATION_FRACTION = 0.35
-const MAX_PAIR_OVERLAP_FRACTION = 0.22
+/** How much node-pair overlap survives the hard positional correction
+ *  below, as a fraction of the pair's combined radius — kept just above
+ *  zero rather than exactly zero for floating-point stability, not to
+ *  leave letters room to sink into each other. */
+const MAX_PAIR_OVERLAP_FRACTION = 0.03
 /** Skip a letter pair's O(n*m) node checks entirely unless their bounding
  *  circles are already close — most pairs, most of the time, aren't. */
 const BROAD_PHASE_MARGIN = 24

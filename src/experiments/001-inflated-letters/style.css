@@ -33,6 +33,11 @@
   position: absolute;
   inset: 0;
   display: block;
+  /* Explicit, not left to the replaced-element default: without this the
+     box can end up sized from the (unset) width/height attributes instead
+     of stretching to fill the resized container. */
+  width: 100%;
+  height: 100%;
 }
 
 .letters__bubble {

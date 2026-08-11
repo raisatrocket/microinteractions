@@ -394,11 +394,15 @@ export default function InflatedLetters() {
           } as CSSProperties
         }
       >
-        <svg
-          className="letters__svg"
-          width={sizeRef.current.width}
-          height={sizeRef.current.height}
-        >
+        {/* No width/height attributes: the container is resized by
+            imperatively writing style.width/height on a ref (see
+            handleResizeMove below), which never re-renders this component,
+            so any attribute value here would go stale the moment a resize
+            happened and clip content the physics still thinks is in
+            bounds. CSS sizes this to the container 1:1 instead — with no
+            viewBox, the coordinate system always matches the rendered box
+            exactly, so there's nothing to fall out of sync. */}
+        <svg className="letters__svg">
           <defs>
             <radialGradient
               id="letters-gloss"
