@@ -16,10 +16,15 @@
  *    contact.
  *
  * Collision is boundary-point-to-boundary-point between different letters
- * (each point a small circle) plus per-point wall checks — the same
- * repulsion-with-a-hard-backstop technique as before, just applied to many
- * points per letter instead of a handful of rigid sub-circles, which is what
- * lets contact actually localize to where it's happening.
+ * (each point a small circle) plus per-point wall checks, both using a
+ * repulsion-with-a-hard-backstop technique: a soft spring resists overlap,
+ * and a direct positional correction on top of that caps how deep any
+ * pair is ever allowed to interpenetrate, so contact reads as two solid
+ * things pushing against each other rather than one sinking into the
+ * other. A held letter's center also only chases the pointer at a capped
+ * speed rather than teleporting to it — otherwise a fast enough drag could
+ * move a letter's boundary past a neighbor's between one substep and the
+ * next, tunneling through it before collision ever saw an overlap.
  *
  * Integration uses the same fixed-substep technique as lib/spring.ts, for
  * the same reason: these springs are stiffer than the natural frequency a
@@ -33,9 +38,9 @@ export const LETTER_CHARS = ['B', 'U', 'B', 'B', 'L', 'E'] as const
 
 export const CONTAINER_MIN_WIDTH = 220
 export const CONTAINER_MIN_HEIGHT = 160
-export const CONTAINER_MAX_WIDTH = 660
+export const CONTAINER_MAX_WIDTH = 680
 export const CONTAINER_MAX_HEIGHT = 400
-export const CONTAINER_DEFAULT_WIDTH = 580
+export const CONTAINER_DEFAULT_WIDTH = 640
 export const CONTAINER_DEFAULT_HEIGHT = 320
 
 /** The glyph height (in px) the size slider's default reproduces. */
@@ -200,10 +205,21 @@ const NODE_STIFFNESS = 2200
 const NODE_DAMPING = 18
 
 const MAX_WALL_PENETRATION_FRACTION = 0.35
-const MAX_PAIR_OVERLAP_FRACTION = 0.7
+const MAX_PAIR_OVERLAP_FRACTION = 0.22
 /** Skip a letter pair's O(n*m) node checks entirely unless their bounding
  *  circles are already close — most pairs, most of the time, aren't. */
 const BROAD_PHASE_MARGIN = 24
+
+/** Caps how fast a held letter's center can chase the pointer, in px/s —
+ *  see the comment where it's used. Generously above any real drag speed,
+ *  so this is never perceptible in ordinary use. */
+const HELD_CHASE_SPEED = 1600
+
+/** The rendered stroke (see style.css) visually dilates each letter beyond
+ *  its simulated boundary by up to this many px at full inflation — kept
+ *  here, not just in CSS, so collision can add matching clearance and the
+ *  puffed-up *look* never overlaps even though the underlying nodes don't. */
+export const MAX_DILATION_PX = 9
 
 const SUBSTEP = 1 / 480
 const MAX_FRAME = 1 / 30
@@ -211,7 +227,9 @@ const MAX_FRAME = 1 / 30
 /**
  * Advances the simulation by `rawDt` seconds (already multiplied by the
  * playback speed). `firmness` (roughly 0.5..1.6) scales how strongly each
- * letter resists deformation — the inflation slider's physical half.
+ * letter resists deformation, and `dilation` (0..1) is how much visual
+ * stroke-puff extra clearance collision should hold open — the inflation
+ * slider's physical and visual halves, respectively.
  * Mutates `letters` in place. Returns whether anything is still moving.
  */
 export function stepPhysics(
@@ -220,11 +238,12 @@ export function stepPhysics(
   containerHeight: number,
   rawDt: number,
   firmness: number,
+  dilation: number,
 ): boolean {
   let remaining = Math.min(rawDt, MAX_FRAME)
   while (remaining > 0) {
     const h = Math.min(remaining, SUBSTEP)
-    substep(letters, containerWidth, containerHeight, h, firmness)
+    substep(letters, containerWidth, containerHeight, h, firmness, dilation)
     remaining -= h
   }
   return hasEnergy(letters)
@@ -236,7 +255,9 @@ function substep(
   containerHeight: number,
   dt: number,
   firmness: number,
+  dilation: number,
 ): void {
+  const visualPad = dilation * MAX_DILATION_PX
   // Fit each letter's current center + rotation to its rest shape, then pull
   // every point toward that fitted target. While held, the target center is
   // pinned to the pointer instead of the shape's own current average — the
@@ -244,8 +265,22 @@ function substep(
   // pinned, so it can still lag, wobble, and squish against neighbors mid-drag.
   for (const letter of letters) {
     if (letter.held) {
-      letter.cx = letter.targetX
-      letter.cy = letter.targetY
+      // Chase the pointer at a capped speed rather than teleporting to it
+      // outright — a synthetic or very fast pointer jump could otherwise
+      // move a letter's center farther in one substep than the node
+      // collision below can resolve, tunneling it clean through a
+      // neighbor instead of pushing against it.
+      const ddx = letter.targetX - letter.cx
+      const ddy = letter.targetY - letter.cy
+      const chaseDist = Math.hypot(ddx, ddy)
+      const maxStep = HELD_CHASE_SPEED * dt
+      if (chaseDist > maxStep) {
+        letter.cx += (ddx / chaseDist) * maxStep
+        letter.cy += (ddy / chaseDist) * maxStep
+      } else {
+        letter.cx = letter.targetX
+        letter.cy = letter.targetY
+      }
     } else {
       let cx = 0
       let cy = 0
@@ -318,28 +353,18 @@ function substep(
     }
   }
 
-  // Walls: every boundary point checked independently.
+  // Walls: every boundary point checked independently. The stroke that
+  // renders "puffiness" only extends outward from this one letter, so it
+  // only needs half the dilation as extra clearance here (vs. the full
+  // amount between two letters' strokes, below).
   for (const letter of letters) {
-    const tolerance = letter.nodeRadius * MAX_WALL_PENETRATION_FRACTION
+    const radius = letter.nodeRadius + visualPad / 2
+    const tolerance = radius * MAX_WALL_PENETRATION_FRACTION
     for (const n of letter.outer) {
-      resolveWall(n, tolerance, letter.nodeRadius - n.x, 1, 0, dt)
-      resolveWall(
-        n,
-        tolerance,
-        n.x - (containerWidth - letter.nodeRadius),
-        -1,
-        0,
-        dt,
-      )
-      resolveWall(n, tolerance, letter.nodeRadius - n.y, 0, 1, dt)
-      resolveWall(
-        n,
-        tolerance,
-        n.y - (containerHeight - letter.nodeRadius),
-        0,
-        -1,
-        dt,
-      )
+      resolveWall(n, tolerance, radius - n.x, 1, 0, dt)
+      resolveWall(n, tolerance, n.x - (containerWidth - radius), -1, 0, dt)
+      resolveWall(n, tolerance, radius - n.y, 0, 1, dt)
+      resolveWall(n, tolerance, n.y - (containerHeight - radius), 0, -1, dt)
     }
   }
 
@@ -358,7 +383,7 @@ function substep(
         continue
       }
 
-      const sumR = a.nodeRadius + b.nodeRadius
+      const sumR = a.nodeRadius + b.nodeRadius + visualPad
       const maxOverlap = sumR * MAX_PAIR_OVERLAP_FRACTION
 
       for (const na of a.outer) {

@@ -43,6 +43,14 @@
     0 calc(10px * var(--inflation, 0.7)) calc(16px * var(--inflation, 0.7))
       rgba(0, 0, 0, calc(0.45 * var(--inflation, 0.7)))
   );
+  /* The actual physical "how thick/puffed-up is this letter" read: a round
+     stroke in the letter's own color, straddling its traced outline, so
+     the whole glyph (including the holes' inner edges) visibly plumps up
+     or flattens out as the slider moves. --dilation-max matches
+     MAX_DILATION_PX in physics.ts, which gives collision matching extra
+     clearance so the puffed-up look never overlaps a neighbor. */
+  stroke-width: calc(var(--inflation, 0.7) * var(--dilation-max, 9px));
+  stroke-linejoin: round;
 }
 
 .letters__fillPath {

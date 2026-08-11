@@ -17,6 +17,7 @@ import {
   CONTAINER_MIN_HEIGHT,
   CONTAINER_MIN_WIDTH,
   LETTER_CHARS,
+  MAX_DILATION_PX,
   MAX_SIZE,
   MIN_SIZE,
   createLetter,
@@ -40,7 +41,7 @@ const LETTER_COLORS = [
   '#a76bfa', // E — violet purple
 ] as const
 
-const GAP = 14
+const GAP = 20
 /** 0-100. Matched to the firmness/visual constants below so the default
  *  slider position reproduces the look and feel this shipped with. */
 const DEFAULT_INFLATION = 70
@@ -168,6 +169,7 @@ export default function InflatedLetters() {
   const resizingRef = useRef(false)
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
   const firmnessRef = useRef(firmnessFromInflation(DEFAULT_INFLATION))
+  const dilationRef = useRef(DEFAULT_INFLATION / 100)
 
   const timeScale = useTimeScale()
   const stageScale = useStageScale()
@@ -197,6 +199,7 @@ export default function InflatedLetters() {
         sizeRef.current.height,
         seconds,
         firmnessRef.current,
+        dilationRef.current,
       )
       paint()
 
@@ -354,10 +357,13 @@ export default function InflatedLetters() {
     [wake],
   )
 
-  // Inflation has a visual half (gradient/gloss/shadow, via the CSS custom
-  // property) and a physical half (firmness — how hard the shape resists
-  // deformation) — deliberately not a size change, so a letter's hit area
-  // stays put regardless of how puffy or floppy it currently looks.
+  // Inflation has three halves, all driven by the same 0-100 value: a
+  // visual gradient/gloss/shadow depth, a visual stroke-based dilation that
+  // actually thickens the rendered glyph (via --inflation in the CSS,
+  // consumed as a stroke-width calc()), and a physical firmness — how hard
+  // the shape resists deformation. Collision gets matching extra clearance
+  // for the dilation (see physics.ts's `dilation` param) so the puffed-up
+  // look never overlaps even though the simulated boundary hasn't grown.
   const handleInflationChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const inflation = event.currentTarget.valueAsNumber
@@ -366,6 +372,7 @@ export default function InflatedLetters() {
         String(inflation / 100),
       )
       firmnessRef.current = firmnessFromInflation(inflation)
+      dilationRef.current = inflation / 100
       wake()
     },
     [wake],
@@ -383,6 +390,7 @@ export default function InflatedLetters() {
             width: sizeRef.current.width,
             height: sizeRef.current.height,
             '--inflation': DEFAULT_INFLATION / 100,
+            '--dilation-max': `${MAX_DILATION_PX}px`,
           } as CSSProperties
         }
       >
@@ -436,6 +444,7 @@ export default function InflatedLetters() {
                 }}
                 className="letters__fillPath"
                 fill={LETTER_COLORS[i]}
+                stroke={LETTER_COLORS[i]}
                 fillRule="evenodd"
                 onPointerDown={handleLetterDown(i)}
                 onPointerMove={handleLetterMove}
@@ -445,12 +454,14 @@ export default function InflatedLetters() {
               <use
                 href={`#letters-path-${i}`}
                 fill="url(#letters-shade)"
+                stroke="url(#letters-shade)"
                 fillRule="evenodd"
                 pointerEvents="none"
               />
               <use
                 href={`#letters-path-${i}`}
                 fill="url(#letters-gloss)"
+                stroke="url(#letters-gloss)"
                 fillRule="evenodd"
                 pointerEvents="none"
               />
