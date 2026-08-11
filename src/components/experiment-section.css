@@ -54,8 +54,8 @@
 }
 
 .exp[data-active] .exp__node {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-text);
+  border-color: var(--accent-text);
   transform: scale(1.25);
   box-shadow: 0 0 0 4px var(--accent-soft);
 }
@@ -92,7 +92,7 @@
 }
 
 .exp__index {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .exp__sep {
@@ -110,7 +110,7 @@
 .exp__title a {
   color: var(--text);
   text-decoration: none;
-  background-image: linear-gradient(var(--accent), var(--accent));
+  background-image: linear-gradient(var(--accent-text), var(--accent-text));
   background-repeat: no-repeat;
   background-position: 0 100%;
   background-size: 0% 1px;
@@ -186,7 +186,7 @@
 }
 
 .exp__copy[data-copied] {
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: color-mix(in oklab, var(--accent) 40%, transparent);
   background: var(--accent-soft);
 }

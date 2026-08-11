@@ -107,7 +107,7 @@
 }
 
 .sidenav__item[data-current='true'] .sidenav__index {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .sidenav__title {
@@ -123,7 +123,7 @@
   top: 0;
   width: 2px;
   border-radius: 2px;
-  background: var(--accent);
+  background: var(--accent-text);
   transition:
     transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1),
     height 300ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -136,12 +136,87 @@
 }
 
 /* ------------------------------------------------------------------ *
- * Foot
+ * Foot — experiment count plus the theme toggle, pinned to the bottom
  * ------------------------------------------------------------------ */
 
 .sidenav__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   flex: none;
-  padding: 0 10px;
+  padding: 0 6px 0 10px;
+}
+
+.sidenav__count {
   color: var(--text-faint);
   opacity: 0.75;
+}
+
+.sidenav__theme {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  flex: none;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.sidenav__theme:hover {
+  background: var(--panel-hi);
+  color: var(--text);
+}
+
+/* Sun and moon are stacked and cross-faded by which data-theme is current,
+   rather than swapped outright — the little rotate sells the switch as one
+   continuous motion instead of two icons trading places. */
+.sidenav__themeIcon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+}
+
+.sidenav__themeIcon svg {
+  position: absolute;
+  inset: 0;
+  transition:
+    opacity 260ms ease,
+    rotate 420ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    scale 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.sidenav__themeSun {
+  opacity: 0;
+  rotate: -60deg;
+  scale: 0.6;
+}
+
+.sidenav__themeMoon {
+  opacity: 1;
+  rotate: 0deg;
+  scale: 1;
+}
+
+.sidenav__themeIcon[data-theme='light'] .sidenav__themeSun {
+  opacity: 1;
+  rotate: 0deg;
+  scale: 1;
+}
+
+.sidenav__themeIcon[data-theme='light'] .sidenav__themeMoon {
+  opacity: 0;
+  rotate: 60deg;
+  scale: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidenav__themeIcon svg {
+    transition: opacity 160ms ease;
+  }
 }

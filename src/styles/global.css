@@ -50,11 +50,16 @@ button {
 
 ::selection {
   background: color-mix(in oklab, var(--accent) 30%, transparent);
-  color: #fff;
+  color: var(--text);
 }
 
 /* ------------------------------------------------------------------ *
  * Tokens
+ *
+ * Dark is the default and only look until a reader explicitly switches —
+ * :root carries the dark values directly, [data-theme='light'] overrides
+ * them. This also means anything with no theme ancestor (the embed route,
+ * which never sets the attribute) stays dark automatically.
  * ------------------------------------------------------------------ */
 
 :root {
@@ -80,9 +85,13 @@ button {
   --text-dim: #8b8c98;
   --text-faint: #55565f;
 
-  /* Accent */
+  /* Accent. --accent is the brand mint — a fixed surface fill for buttons
+     and small brand marks, paired with the always-dark --accent-ink text.
+     --accent-text is for using the accent as text/icon color directly on
+     the page background, where legibility must adapt per theme. */
   --accent: #5ee9b5;
   --accent-ink: #06281d;
+  --accent-text: var(--accent);
   --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
 
   --radius-sm: 6px;
@@ -93,6 +102,29 @@ button {
   --gutter: 32px;
   --rail: 44px;
   --sidenav-w: 260px;
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: #f6f6f4;
+  --bg-elev: #ffffff;
+  --panel: #ffffff;
+  --panel-hi: #eef0ed;
+
+  --line: #d9dad6;
+  --line-soft: #e6e6e3;
+
+  --text: #16161a;
+  --text-dim: #55565c;
+  --text-faint: #8d8e96;
+
+  /* The mint accent is too light to read as text on white — deepen it for
+     that role, while --accent itself stays the same brand mint for surface
+     fills (buttons keep using the dark --accent-ink text regardless). */
+  --accent-text: color-mix(in oklab, var(--accent) 42%, black);
+
+  color-scheme: light;
 }
 
 @media (max-width: 720px) {

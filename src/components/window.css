@@ -1,6 +1,19 @@
 .win {
   width: 100%;
   max-width: 800px;
+
+  /* The experiment canvas and its chrome bar are tuned for a dark surface —
+     glows, radial fields, box-shadows calibrated against near-black — and
+     stay that way regardless of the site's light/dark toggle. This shadows
+     the theme tokens for everything inside .win. */
+  --bg-elev: #0e0e11;
+  --panel: #121216;
+  --panel-hi: #17171c;
+  --line: #26262e;
+  --line-soft: #1a1a20;
+  --text: #ecedf0;
+  --text-dim: #8b8c98;
+  --text-faint: #55565f;
 }
 
 .win .chrome {
@@ -12,8 +25,11 @@
 .win__frame {
   position: relative;
   width: 100%;
-  aspect-ratio: 800 / 600;
-  overflow: hidden;
+  max-width: 800px;
+  height: 600px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   background: var(--bg-elev);
   border: 1px solid var(--line);
   border-radius: 0 0 var(--radius) var(--radius);

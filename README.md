@@ -29,8 +29,13 @@ src/experiments/004-your-thing/
 ```
 
 The component is mounted into an 800 × 600 box and stretched to fill it. Build
-against those dimensions literally — write `190px`, not `24vw`. The stage is
-scaled down as one piece on narrow viewports, so the composition never reflows.
+against those dimensions literally — write `190px`, not `24vw` or `clamp()`.
+The stage never scales: it renders at its true pixel size on every viewport, so
+a button is exactly as big on a phone as it is on a desktop. On a narrower
+viewport the window scrolls horizontally instead of shrinking, opening
+centered so content built in the middle of the stage — which is most of it —
+is visible without scrolling first. Off-center content near the left or right
+edge may need a scroll to reach on mobile; keep that in mind when composing.
 
 **2. Register it.** Append one entry to `src/experiments/registry.ts`:
 
@@ -55,11 +60,45 @@ the same job, so the two are never on screen together.
 
 ---
 
+## Light and dark
+
+A toggle pinned to the bottom of the sidebar, next to the experiment count.
+Dark is the default and the only look until a reader switches; the choice is
+then remembered (`localStorage`, key `mi-theme`) and applied before first
+paint on return visits — a small inline script in `index.html` does that, so
+there is no flash of the other theme on load.
+
+The experiment stage itself is exempt: it stays on its original dark surface
+regardless of the site theme, in `.win`'s override of the color tokens in
+`window.css`. The glows and radial fields in the existing experiments were
+tuned against a near-black canvas, and retuning them for a white one is a
+bigger job than a toggle — so the canvas is treated like a code editor's
+content pane: fixed, while the chrome around it adapts. The embed route is
+unaffected either way, since it never sets a theme and the dark values are
+already `:root`'s default.
+
+Tokens live in `src/styles/global.css`. Most of them (`--bg`, `--panel`,
+`--text`, …) are used as-is and simply have a light variant. `--accent` is the
+exception: it stays the same bright mint in both themes for surface fills
+(buttons, tracks) where the always-dark `--accent-ink` sits on top of it as
+text. Where the accent is used as text or a thin line *directly on the page
+background* instead, contrast breaks in light mode — pale mint on white is
+close to invisible — so those spots use `--accent-text`, which is the same
+mint in dark and a darkened mix of it in light. If a new page-level element
+puts the accent color on the page background rather than inside a filled
+surface, reach for `--accent-text`, not `--accent`.
+
+---
+
 ## Embedding an experiment elsewhere
 
 Every experiment is also served standalone at `/embed/<slug>`, with the
 timeline, the copy, and the window chrome stripped away — just the stage,
-scaled to fill whatever box the host gives it.
+scaled to fill whatever box the host gives it. This is the one place the stage
+does scale: an embed has no native size of its own, so it has to fit whatever
+box Framer (or any other host) hands it — unlike the timeline, which now
+always renders the stage at its true pixel size and scrolls instead of
+shrinking on narrow viewports.
 
 The **Copy embed** button on each timeline entry puts a ready snippet on your
 clipboard:
@@ -135,10 +174,13 @@ Velocity is handed to you deliberately — driving squash-and-stretch from it is
 what separates a spring that moves from one that feels like matter.
 `SPRINGS` holds the named configs: `gentle`, `snappy`, `bouncy`, `stiff`.
 
-**Pointer coordinates.** The stage is scaled with a transform, so viewport
-deltas are not stage units. Divide by `useStageScale().current` before using
-them. Measure an untransformed anchor element, never the element the spring is
-already moving — that feeds its own output back in.
+**Pointer coordinates.** On the timeline the stage is always at scale 1, so
+viewport deltas are stage units there already. In an embed the stage is scaled
+to fit its host box, so the same math needs `useStageScale().current` to
+convert — divide by it before using a pointer delta, and the code works
+correctly in both places without knowing which one it's in. Measure an
+untransformed anchor element, never the element the spring is already
+moving — that feeds its own output back in.
 
 No animation library. The spring integrator is ~40 lines of semi-implicit Euler
 with a fixed substep, in `src/lib/spring.ts`.

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
-import Stage, { STAGE_WIDTH } from './Stage'
+import Stage from './Stage'
 import StageChrome from './StageChrome'
 import { useStageControls } from './useStageControls'
 import './window.css'
@@ -14,28 +14,30 @@ type WindowProps = {
 }
 
 /**
- * A stage on the timeline: chrome on top, then the 800x600 surface fitted to
- * whatever width the column gives it.
+ * A stage on the timeline: chrome on top, then the 800x600 surface at its
+ * true pixel size — never scaled down. On a narrower viewport the frame
+ * scrolls horizontally instead of shrinking, so nothing inside an experiment
+ * (a button, a knob) ever renders smaller on mobile than on desktop.
  */
 export default function Window({ index, title, children }: WindowProps) {
   const frameRef = useRef<HTMLDivElement>(null)
-  const [scale, setScale] = useState(1)
   const [mounted, setMounted] = useState(false)
   const controls = useStageControls()
 
-  // The frame is sized by CSS aspect-ratio, so measuring it never shifts
-  // layout — which is what lets a deep link land accurately on first paint.
+  // Experiments generally center their content, so on a narrow frame — where
+  // the 800px-wide stage overflows and only scrolls into view a piece at a
+  // time — start centered rather than pinned to the left edge, so the thing
+  // to interact with is visible without scrolling first.
   useLayoutEffect(() => {
     const frame = frameRef.current
     if (!frame) return
 
-    const measure = () => {
-      const width = frame.clientWidth
-      if (width > 0) setScale(width / STAGE_WIDTH)
+    const center = () => {
+      frame.scrollLeft = (frame.scrollWidth - frame.clientWidth) / 2
     }
 
-    measure()
-    const observer = new ResizeObserver(measure)
+    center()
+    const observer = new ResizeObserver(center)
     observer.observe(frame)
     return () => observer.disconnect()
   }, [])
@@ -65,7 +67,7 @@ export default function Window({ index, title, children }: WindowProps) {
 
       <div className="win__frame" ref={frameRef}>
         <Stage
-          scale={scale}
+          scale={1}
           speed={controls.speed}
           grid={controls.grid}
           runId={controls.runId}

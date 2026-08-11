@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import ExperimentSection from './components/ExperimentSection'
 import SideNav from './components/SideNav'
 import { experiments, findExperiment, ordinal } from './experiments/registry'
+import { useTheme } from './theme/useTheme'
 import './app.css'
 
 /**
@@ -31,6 +32,7 @@ function prefersReducedMotion(): boolean {
 export default function App() {
   const sections = useRef(new Map<string, HTMLElement>())
   const [active, setActive] = useState('')
+  const [theme, toggleTheme] = useTheme()
 
   const registerSection = useCallback(
     (slug: string, el: HTMLElement | null) => {
@@ -165,7 +167,13 @@ export default function App() {
 
   return (
     <div className="layout">
-      <SideNav active={active} onNavigate={navigate} onHome={goHome} />
+      <SideNav
+        active={active}
+        onNavigate={navigate}
+        onHome={goHome}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
 
       <div className="layout__main">
         <header className="topbar">
@@ -208,7 +216,7 @@ export default function App() {
           <section className="hero">
             <p className="hero__eyebrow mono">A running log</p>
             <h1 className="hero__title">
-              Lab of <span className="hero__accent">Experimentation</span>.
+              Lab of <span className="hero__accent">Experimentation</span>
             </h1>
             <p className="hero__lede">
               Consistently tinkering and exploring, leaving it here for everyone
