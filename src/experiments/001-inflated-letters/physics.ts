@@ -25,9 +25,16 @@ export const LETTER_CHARS = ['B', 'U', 'B', 'B', 'L', 'E'] as const
 export const CONTAINER_MIN_WIDTH = 200
 export const CONTAINER_MIN_HEIGHT = 150
 export const CONTAINER_MAX_WIDTH = 660
-export const CONTAINER_MAX_HEIGHT = 440
+export const CONTAINER_MAX_HEIGHT = 400
 export const CONTAINER_DEFAULT_WIDTH = 580
 export const CONTAINER_DEFAULT_HEIGHT = 320
+
+/** The font-size the glyphs are measured at, and what the size slider's
+ *  default reproduces. Every other size is this scaled, both visually
+ *  (font-size) and physically (collision shapes), from the same number. */
+export const BASE_FONT_SIZE = 106
+export const MIN_FONT_SIZE = 64
+export const MAX_FONT_SIZE = 158
 
 /**
  * Hand-authored circle-cluster approximations of each glyph's silhouette, as
@@ -112,6 +119,12 @@ export type Letter = {
   /** Radians; direction of whatever is compressing this letter hardest. */
   squishAngle: number
   shape: LetterShape
+  /** This glyph's real measured size at BASE_FONT_SIZE — kept alongside the
+   *  live (possibly rescaled) shape so the size slider can recompute the
+   *  collision shape from arithmetic alone. Font scaling is linear, so
+   *  there's no need to re-measure the DOM on every slider move. */
+  baseWidth: number
+  baseHeight: number
 }
 
 export function createLetter(
@@ -119,6 +132,8 @@ export function createLetter(
   x: number,
   y: number,
   shape: LetterShape,
+  baseWidth: number,
+  baseHeight: number,
 ): Letter {
   return {
     char,
@@ -130,7 +145,24 @@ export function createLetter(
     squish: 0,
     squishAngle: 0,
     shape,
+    baseWidth,
+    baseHeight,
   }
+}
+
+/** Rebuilds a letter's collision shape for a new font-size, from its cached
+ *  base measurement — used by the size slider, which changes every letter's
+ *  effective scale without re-measuring anything. */
+export function rescaleLetterShape(
+  letter: Letter,
+  fontSize: number,
+): LetterShape {
+  const scale = fontSize / BASE_FONT_SIZE
+  return resolveLetterShape(
+    letter.char,
+    letter.baseWidth * scale,
+    letter.baseHeight * scale,
+  )
 }
 
 const FRICTION = 2.2 // 1/s velocity decay

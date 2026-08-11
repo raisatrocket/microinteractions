@@ -1,10 +1,15 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import type {
+  ChangeEvent,
+  CSSProperties,
+  PointerEvent as ReactPointerEvent,
+} from 'react'
 
 import { STAGE_HEIGHT, STAGE_WIDTH } from '../../components/Stage'
 import { clamp } from '../../lib/util'
 import { useStageScale, useTimeScale } from '../../stage/stage-context'
 import {
+  BASE_FONT_SIZE,
   CONTAINER_DEFAULT_HEIGHT,
   CONTAINER_DEFAULT_WIDTH,
   CONTAINER_MAX_HEIGHT,
@@ -12,7 +17,10 @@ import {
   CONTAINER_MIN_HEIGHT,
   CONTAINER_MIN_WIDTH,
   LETTER_CHARS,
+  MAX_FONT_SIZE,
+  MIN_FONT_SIZE,
   createLetter,
+  rescaleLetterShape,
   resolveLetterShape,
   stepPhysics,
 } from './physics'
@@ -32,6 +40,9 @@ const LETTER_COLORS = [
 
 const GAP = 12
 const FONT_SPEC = '800 1em "Baloo 2"'
+/** 0-100, matched to the gradient/gloss/shadow constants in style.css so the
+ *  default slider position reproduces the look the experiment shipped with. */
+const DEFAULT_INFLATION = 70
 
 // A fixed anchor, not a recomputed center: the top-left corner of the
 // container never moves, so dragging the bottom-right handle grows the box
@@ -172,7 +183,14 @@ export default function InflatedLetters() {
         const rect = letterElsRef.current[i]?.getBoundingClientRect()
         const width = rect?.width || 80
         const height = rect?.height || 96
-        return createLetter(char, 0, 0, resolveLetterShape(char, width, height))
+        return createLetter(
+          char,
+          0,
+          0,
+          resolveLetterShape(char, width, height),
+          width,
+          height,
+        )
       })
       layoutRow(letters, sizeRef.current.width, sizeRef.current.height)
       lettersRef.current = letters
@@ -312,17 +330,53 @@ export default function InflatedLetters() {
     [],
   )
 
+  // Global — one write to the container's own custom property reaches every
+  // letter through CSS inheritance, no per-bubble loop needed for the visual
+  // half. The collision shapes are a separate concern: font scaling is
+  // linear, so each letter's shape is rebuilt from its cached base
+  // measurement rather than re-reading the DOM on every drag tick.
+  const handleSizeChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const fontSize = event.currentTarget.valueAsNumber
+      containerRef.current?.style.setProperty(
+        '--letters-font-size',
+        `${fontSize}px`,
+      )
+      for (const letter of lettersRef.current) {
+        letter.shape = rescaleLetterShape(letter, fontSize)
+      }
+      wake()
+    },
+    [wake],
+  )
+
+  // Purely visual — the gradient contrast, gloss opacity, and shadow depth
+  // that sell "full of air" vs. "flat". Never touches the collision shape,
+  // deliberately: the ask was two independent controls, not one disguised
+  // as two.
+  const handleInflationChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const inflation = event.currentTarget.valueAsNumber / 100
+      containerRef.current?.style.setProperty('--inflation', String(inflation))
+    },
+    [],
+  )
+
   return (
     <div className="letters">
       <div
         className="letters__container"
         ref={containerRef}
-        style={{
-          left: ANCHOR_X,
-          top: ANCHOR_Y,
-          width: sizeRef.current.width,
-          height: sizeRef.current.height,
-        }}
+        style={
+          {
+            left: ANCHOR_X,
+            top: ANCHOR_Y,
+            width: sizeRef.current.width,
+            height: sizeRef.current.height,
+            '--letters-font-size': `${BASE_FONT_SIZE}px`,
+            '--inflation': DEFAULT_INFLATION / 100,
+          } as CSSProperties
+        }
       >
         {LETTER_CHARS.map((char, i) => (
           <div
@@ -361,7 +415,31 @@ export default function InflatedLetters() {
         </div>
       </div>
 
-      <p className="letters__hint mono">Drag a letter · resize the corner</p>
+      <div className="letters__controls">
+        <label className="letters__control">
+          <span className="letters__controlLabel mono">Size</span>
+          <input
+            type="range"
+            className="letters__slider"
+            min={MIN_FONT_SIZE}
+            max={MAX_FONT_SIZE}
+            defaultValue={BASE_FONT_SIZE}
+            onChange={handleSizeChange}
+          />
+        </label>
+
+        <label className="letters__control">
+          <span className="letters__controlLabel mono">Inflation</span>
+          <input
+            type="range"
+            className="letters__slider"
+            min={0}
+            max={100}
+            defaultValue={DEFAULT_INFLATION}
+            onChange={handleInflationChange}
+          />
+        </label>
+      </div>
     </div>
   )
 }

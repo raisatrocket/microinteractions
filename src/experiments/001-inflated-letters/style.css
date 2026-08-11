@@ -34,14 +34,22 @@
   display: inline-block;
   font-family: 'Baloo 2', var(--font-sans);
   font-weight: 800;
-  font-size: 106px;
+  /* Set on .letters__container and inherited — the size slider writes one
+     custom property there and every letter picks it up, no per-bubble loop. */
+  font-size: var(--letters-font-size, 106px);
   line-height: 1;
   cursor: grab;
   touch-action: none;
   will-change: transform;
   user-select: none;
   -webkit-user-select: none;
-  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.4));
+  /* --inflation (0-1, also set on the container and inherited) scales the
+     shadow depth alongside the fill/gloss below — together they're what
+     "full of air" vs. "flat" actually means here. */
+  filter: drop-shadow(
+    0 calc(12px * var(--inflation, 0.7)) calc(18px * var(--inflation, 0.7))
+      rgba(0, 0, 0, calc(0.5 * var(--inflation, 0.7)))
+  );
   transition: opacity 220ms ease;
 }
 
@@ -54,9 +62,10 @@
   display: inline-block;
   background: linear-gradient(
     155deg,
-    color-mix(in oklab, var(--tint) 45%, white) 0%,
+    color-mix(in oklab, var(--tint) calc(58% * var(--inflation, 0.7)), white) 0%,
     var(--tint) 52%,
-    color-mix(in oklab, var(--tint) 72%, black) 100%
+    color-mix(in oklab, var(--tint) calc(95% * var(--inflation, 0.7)), black)
+      100%
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -68,7 +77,7 @@
   inset: 0;
   background: radial-gradient(
     ellipse 55% 40% at 30% 20%,
-    rgba(255, 255, 255, 0.9),
+    rgba(255, 255, 255, calc(1.15 * var(--inflation, 0.7))),
     transparent 68%
   );
   -webkit-background-clip: text;
@@ -100,14 +109,76 @@
 }
 
 /* ------------------------------------------------------------------ *
- * Hint
+ * Controls — global sliders, pinned to the stage rather than the
+ * container, so they stay put regardless of how big the container is
+ * resized (the container's own max height leaves room for this row).
  * ------------------------------------------------------------------ */
 
-.letters__hint {
+.letters__controls {
   position: absolute;
   left: 50%;
-  bottom: 22px;
+  bottom: 20px;
   translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+
+.letters__control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.letters__controlLabel {
   color: var(--text-faint);
-  pointer-events: none;
+  white-space: nowrap;
+}
+
+.letters__slider {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 88px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--line);
+  outline: none;
+  cursor: pointer;
+}
+
+.letters__slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 140ms ease;
+}
+
+.letters__slider:hover::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+.letters__slider::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.letters__slider::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border: none;
+  border-radius: 50%;
+  background: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: transform 140ms ease;
+}
+
+.letters__slider:hover::-moz-range-thumb {
+  transform: scale(1.15);
 }
