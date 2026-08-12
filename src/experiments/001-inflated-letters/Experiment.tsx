@@ -30,15 +30,14 @@ import type { Letter } from './physics'
 import type { Vec } from './outlines'
 import './style.css'
 
-/** A saturated color per letter — no two touching in the starting row land
- *  close on the color wheel. */
+/** A blue ombré, one step per letter, darkest to lightest. */
 const LETTER_COLORS = [
-  '#ff5b52', // B — coral red
-  '#ffc93c', // U — golden yellow
-  '#3db4f2', // B — sky blue
-  '#ff4fa0', // B — hot pink
-  '#5fcb53', // L — grass green
-  '#a76bfa', // E — violet purple
+  '#023e8a', // B
+  '#0077b6', // U
+  '#0096c7', // B
+  '#00b4d8', // B
+  '#48cae4', // L
+  '#90e0ef', // E
 ] as const
 
 const GAP = 20
@@ -169,7 +168,6 @@ export default function InflatedLetters() {
   const resizingRef = useRef(false)
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
   const firmnessRef = useRef(firmnessFromInflation(DEFAULT_INFLATION))
-  const dilationRef = useRef(DEFAULT_INFLATION / 100)
 
   const timeScale = useTimeScale()
   const stageScale = useStageScale()
@@ -199,7 +197,6 @@ export default function InflatedLetters() {
         sizeRef.current.height,
         seconds,
         firmnessRef.current,
-        dilationRef.current,
       )
       paint()
 
@@ -357,13 +354,13 @@ export default function InflatedLetters() {
     [wake],
   )
 
-  // Inflation has three halves, all driven by the same 0-100 value: a
-  // visual gradient/gloss/shadow depth, a visual stroke-based dilation that
-  // actually thickens the rendered glyph (via --inflation in the CSS,
-  // consumed as a stroke-width calc()), and a physical firmness — how hard
-  // the shape resists deformation. Collision gets matching extra clearance
-  // for the dilation (see physics.ts's `dilation` param) so the puffed-up
-  // look never overlaps even though the simulated boundary hasn't grown.
+  // Inflation has two halves, both driven by the same 0-100 value through
+  // the --inflation custom property: a purely visual one (gradient gloss/
+  // shadow depth and a stroke-based dilation that thickens the rendered
+  // glyph — all pure CSS, see style.css) and a physical one — firmness,
+  // how hard the shape resists deformation. The visual half never feeds
+  // back into collision; letters are allowed to touch with zero gap
+  // regardless of how puffed-up they currently look.
   const handleInflationChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const inflation = event.currentTarget.valueAsNumber
@@ -372,7 +369,6 @@ export default function InflatedLetters() {
         String(inflation / 100),
       )
       firmnessRef.current = firmnessFromInflation(inflation)
-      dilationRef.current = inflation / 100
       wake()
     },
     [wake],

@@ -16,15 +16,36 @@
  *    contact.
  *
  * Collision is boundary-point-to-boundary-point between different letters
- * (each point a small circle) plus per-point wall checks, both using a
- * repulsion-with-a-hard-backstop technique: a soft spring resists overlap,
- * and a direct positional correction on top of that caps how deep any
- * pair is ever allowed to interpenetrate, so contact reads as two solid
- * things pushing against each other rather than one sinking into the
- * other. A held letter's center also only chases the pointer at a capped
- * speed rather than teleporting to it — otherwise a fast enough drag could
- * move a letter's boundary past a neighbor's between one substep and the
- * next, tunneling through it before collision ever saw an overlap.
+ * (each point a small circle) plus per-point wall checks, using three
+ * layered techniques that each fix a different way two letters could end
+ * up sitting inside each other:
+ *
+ *  - A soft spring resists overlap for feel, plus a direct positional
+ *    correction (run several times per substep) that pushes any detected
+ *    overlap to exactly zero and cancels the velocity driving the two
+ *    together — position alone isn't enough when a sustained force (a
+ *    drag, most obviously) is still pushing; without also killing that
+ *    velocity, the very next substep just recreates the same overlap.
+ *  - A whole-body nudge, alongside that: a per-node push only moves the
+ *    specific points actually touching, which barely shifts a letter's
+ *    average position if that's a small part of its boundary — and its
+ *    own shape-matching spring, which only cares about staying internally
+ *    undistorted and knows nothing about neighbors, promptly pulls those
+ *    points right back. Moving every node of both letters together, along
+ *    the line between their current centroids, is real body movement
+ *    shape-matching can't undo — this is what actually breaks a
+ *    multi-letter jam (several letters pushed into each other at once)
+ *    instead of the correction fighting itself in place forever.
+ *  - A hard cap on every node's speed, the safety net for the one thing
+ *    the above can't fix after the fact: tunneling, where a boundary point
+ *    skips clean through a neighbor's between one substep and the next
+ *    and collision never even sees the overlap.
+ *
+ * Dragging a letter is its own spring pulling the whole body toward the
+ * pointer, not a direct position snap — a snap would silently override
+ * wherever collision had just pushed the letter's nodes, letting a drag
+ * permanently win over collision instead of being resisted by it the way
+ * pressing one balloon into another actually feels.
  *
  * Integration uses the same fixed-substep technique as lib/spring.ts, for
  * the same reason: these springs are stiffer than the natural frequency a
@@ -211,37 +232,60 @@ const WALL_STIFFNESS = 2600
 const WALL_DAMPING = 20
 const NODE_STIFFNESS = 2200
 const NODE_DAMPING = 18
+/** The "handle" spring pulling a held letter's whole body toward the
+ *  pointer — deliberately weaker than the collision/wall response above,
+ *  so a letter pressed into a neighbor or a wall visibly slows and can be
+ *  fully stopped rather than the drag always winning. */
+const DRAG_STIFFNESS = 1800
+const DRAG_DAMPING = 30
 
-const MAX_WALL_PENETRATION_FRACTION = 0.35
-/** How much node-pair overlap survives the hard positional correction
- *  below, as a fraction of the pair's combined radius — kept just above
- *  zero rather than exactly zero for floating-point stability, not to
- *  leave letters room to sink into each other. */
-const MAX_PAIR_OVERLAP_FRACTION = 0.03
 /** Skip a letter pair's O(n*m) node checks entirely unless their bounding
  *  circles are already close — most pairs, most of the time, aren't. */
 const BROAD_PHASE_MARGIN = 24
+/** How many times per substep the hard positional correction re-checks
+ *  every wall and every letter pair. Each pass only propagates a
+ *  correction one "hop" through the contact graph (fixing A-B can
+ *  reintroduce overlap in B-C), so a jammed cluster of several mutually
+ *  touching letters needs enough passes for the correction to reach all
+ *  the way through the chain within a single substep — cheap per pass
+ *  since it's pure position math, no spring/damping recompute. */
+const COLLISION_ITERATIONS = 5
+/** Scales the whole-body nudge (see where it's applied) each iteration —
+ *  under 1 so repeating it every iteration doesn't overshoot/oscillate. */
+const WHOLE_BODY_NUDGE_FRACTION = 1
 
-/** Caps how fast a held letter's center can chase the pointer, in px/s —
- *  see the comment where it's used. Generously above any real drag speed,
- *  so this is never perceptible in ordinary use. */
-const HELD_CHASE_SPEED = 1600
+/** Caps every node's speed after all forces are applied, in px/s. Tunneling
+ *  (a boundary point skipping clean through a neighbor's between one
+ *  substep and the next, so collision never sees the overlap to correct
+ *  it) is the one failure mode the iterative positional solver can't fix
+ *  after the fact — this is the safety net for it, generous enough to
+ *  never be felt in ordinary dragging. */
+const MAX_NODE_SPEED = 4000
 
-/** The rendered stroke (see style.css) visually dilates each letter beyond
- *  its simulated boundary by up to this many px at full inflation — kept
- *  here, not just in CSS, so collision can add matching clearance and the
- *  puffed-up *look* never overlaps even though the underlying nodes don't. */
+/** The rendered stroke (see style.css) visually dilates each letter by up
+ *  to this many px at full inflation — purely a paint-time effect now
+ *  (drawn as a round stroke straddling the simulated boundary). It used to
+ *  also reserve matching clearance in collision, which kept letters a
+ *  visible distance apart even at rest; removed so letters can actually
+ *  touch, at the cost of the puffed-up stroke occasionally grazing a
+ *  neighbor's by a px or two right at first contact. */
 export const MAX_DILATION_PX = 9
 
 const SUBSTEP = 1 / 480
 const MAX_FRAME = 1 / 30
 
+// Reused across every substep call (see the comment where they're filled,
+// in substep()) instead of allocating a fresh array each time.
+const candidatePairsA: Letter[] = []
+const candidatePairsB: Letter[] = []
+
 /**
  * Advances the simulation by `rawDt` seconds (already multiplied by the
  * playback speed). `firmness` (roughly 0.5..1.6) scales how strongly each
- * letter resists deformation, and `dilation` (0..1) is how much visual
- * stroke-puff extra clearance collision should hold open — the inflation
- * slider's physical and visual halves, respectively.
+ * letter resists deformation — the inflation slider's physical half (the
+ * visual half — gloss/shadow/stroke-puff — is pure CSS, driven by the same
+ * slider through the `--inflation` custom property, and doesn't feed back
+ * into the simulation at all).
  * Mutates `letters` in place. Returns whether anything is still moving.
  */
 export function stepPhysics(
@@ -250,12 +294,11 @@ export function stepPhysics(
   containerHeight: number,
   rawDt: number,
   firmness: number,
-  dilation: number,
 ): boolean {
   let remaining = Math.min(rawDt, MAX_FRAME)
   while (remaining > 0) {
     const h = Math.min(remaining, SUBSTEP)
-    substep(letters, containerWidth, containerHeight, h, firmness, dilation)
+    substep(letters, containerWidth, containerHeight, h, firmness)
     remaining -= h
   }
   return hasEnergy(letters)
@@ -267,42 +310,26 @@ function substep(
   containerHeight: number,
   dt: number,
   firmness: number,
-  dilation: number,
 ): void {
-  const visualPad = dilation * MAX_DILATION_PX
-  // Fit each letter's current center + rotation to its rest shape, then pull
-  // every point toward that fitted target. While held, the target center is
-  // pinned to the pointer instead of the shape's own current average — the
-  // whole letter follows the drag, but the boundary itself isn't hard-
-  // pinned, so it can still lag, wobble, and squish against neighbors mid-drag.
+  // Fit each letter's current center + rotation to its rest shape, then
+  // pull every point toward that fitted target. The center always comes
+  // from the *current* node average — including while held — rather than
+  // snapping straight to the pointer: if it snapped, a held letter would
+  // re-assert the literal pointer position every single substep no matter
+  // what collision had just pushed its boundary out of the way of, which
+  // is what let a dragged letter permanently overpower collision and sit
+  // inside a neighbor instead of being resisted by it. Dragging is instead
+  // a separate spring (below) pulling the whole body toward the pointer —
+  // a force collision can legitimately push back against.
   for (const letter of letters) {
-    if (letter.held) {
-      // Chase the pointer at a capped speed rather than teleporting to it
-      // outright — a synthetic or very fast pointer jump could otherwise
-      // move a letter's center farther in one substep than the node
-      // collision below can resolve, tunneling it clean through a
-      // neighbor instead of pushing against it.
-      const ddx = letter.targetX - letter.cx
-      const ddy = letter.targetY - letter.cy
-      const chaseDist = Math.hypot(ddx, ddy)
-      const maxStep = HELD_CHASE_SPEED * dt
-      if (chaseDist > maxStep) {
-        letter.cx += (ddx / chaseDist) * maxStep
-        letter.cy += (ddy / chaseDist) * maxStep
-      } else {
-        letter.cx = letter.targetX
-        letter.cy = letter.targetY
-      }
-    } else {
-      let cx = 0
-      let cy = 0
-      for (const n of letter.outer) {
-        cx += n.x
-        cy += n.y
-      }
-      letter.cx = cx / letter.outer.length
-      letter.cy = cy / letter.outer.length
+    let cx = 0
+    let cy = 0
+    for (const n of letter.outer) {
+      cx += n.x
+      cy += n.y
     }
+    letter.cx = cx / letter.outer.length
+    letter.cy = cy / letter.outer.length
 
     let sumCross = 0
     let sumDot = 0
@@ -325,6 +352,30 @@ function substep(
       const ay = stiffness * (targetY - n.y) - SHAPE_DAMPING * n.vy
       n.vx += ax * dt
       n.vy += ay * dt
+    }
+
+    // The "handle" — pulls the whole body (every node equally, so it
+    // doesn't fight the rotation fit above) toward the pointer. Damped
+    // against the body's own average velocity, not each node's own, so it
+    // damps the drag itself rather than fighting the shape-matching spring.
+    if (letter.held) {
+      let avgVx = 0
+      let avgVy = 0
+      for (const n of letter.outer) {
+        avgVx += n.vx
+        avgVy += n.vy
+      }
+      avgVx /= letter.outer.length
+      avgVy /= letter.outer.length
+
+      const dragAx =
+        DRAG_STIFFNESS * (letter.targetX - letter.cx) - DRAG_DAMPING * avgVx
+      const dragAy =
+        DRAG_STIFFNESS * (letter.targetY - letter.cy) - DRAG_DAMPING * avgVy
+      for (const n of letter.outer) {
+        n.vx += dragAx * dt
+        n.vy += dragAy * dt
+      }
     }
   }
 
@@ -354,6 +405,20 @@ function substep(
     }
   }
 
+  // Speed clamp: the one thing standing between a strong enough combined
+  // force (mostly the drag spring) and a node moving farther in this
+  // substep than collision below can detect as an overlap at all.
+  for (const letter of letters) {
+    for (const n of letter.outer) {
+      const speed = Math.hypot(n.vx, n.vy)
+      if (speed > MAX_NODE_SPEED) {
+        const scale = MAX_NODE_SPEED / speed
+        n.vx *= scale
+        n.vy *= scale
+      }
+    }
+  }
+
   // Integrate + friction.
   const frictionFactor = Math.exp(-FRICTION * dt)
   for (const letter of letters) {
@@ -365,23 +430,30 @@ function substep(
     }
   }
 
-  // Walls: every boundary point checked independently. The stroke that
-  // renders "puffiness" only extends outward from this one letter, so it
-  // only needs half the dilation as extra clearance here (vs. the full
-  // amount between two letters' strokes, below).
+  // Walls: every boundary point checked independently, spring + damping
+  // for feel.
   for (const letter of letters) {
-    const radius = letter.nodeRadius + visualPad / 2
-    const tolerance = radius * MAX_WALL_PENETRATION_FRACTION
+    const r = letter.nodeRadius
     for (const n of letter.outer) {
-      resolveWall(n, tolerance, radius - n.x, 1, 0, dt)
-      resolveWall(n, tolerance, n.x - (containerWidth - radius), -1, 0, dt)
-      resolveWall(n, tolerance, radius - n.y, 0, 1, dt)
-      resolveWall(n, tolerance, n.y - (containerHeight - radius), 0, -1, dt)
+      resolveWallVelocity(n, r - n.x, 1, 0, dt)
+      resolveWallVelocity(n, n.x - (containerWidth - r), -1, 0, dt)
+      resolveWallVelocity(n, r - n.y, 0, 1, dt)
+      resolveWallVelocity(n, n.y - (containerHeight - r), 0, -1, dt)
     }
   }
 
-  // Pairs: boundary point vs. boundary point, between different letters only,
-  // with a broad-phase pass so far-apart letters cost almost nothing.
+  // Pairs: boundary point vs. boundary point, between different letters
+  // only, spring + damping for feel — with a broad-phase pass so far-apart
+  // letters cost almost nothing. The candidate list is reused by the hard
+  // positional pass below rather than recomputed, since it's still valid
+  // within the small movement a few correction iterations produce. Two
+  // parallel module-level arrays, cleared and refilled rather than
+  // reallocated, since this runs up to a few hundred times a second and a
+  // fresh array of [a, b] tuples every substep was real, visible GC
+  // pressure — the drag actually stuttering right around pointerdown and
+  // pointerup, not mid-drag, was the tell.
+  candidatePairsA.length = 0
+  candidatePairsB.length = 0
   for (let i = 0; i < letters.length; i++) {
     const a = letters[i]
     for (let j = i + 1; j < letters.length; j++) {
@@ -394,14 +466,16 @@ function substep(
       ) {
         continue
       }
+      candidatePairsA.push(a)
+      candidatePairsB.push(b)
 
-      const sumR = a.nodeRadius + b.nodeRadius + visualPad
-      const maxOverlap = sumR * MAX_PAIR_OVERLAP_FRACTION
-
+      const sumR = a.nodeRadius + b.nodeRadius
+      const sumR2 = sumR * sumR
       for (const na of a.outer) {
         for (const nb of b.outer) {
           const dx = nb.x - na.x
           const dy = nb.y - na.y
+          if (dx * dx + dy * dy > sumR2) continue
           const dist = Math.hypot(dx, dy) || 0.0001
           const overlap = sumR - dist
           if (overlap <= 0) continue
@@ -423,24 +497,123 @@ function substep(
             nb.vx += nx * damp
             nb.vy += ny * damp
           }
-
-          const excess = overlap - maxOverlap
-          if (excess > 0) {
-            const push = excess / 2
-            na.x -= nx * push
-            na.y -= ny * push
-            nb.x += nx * push
-            nb.y += ny * push
-          }
         }
+      }
+    }
+  }
+
+  // Hard positional correction: push any detected overlap to exactly
+  // zero, and — this part matters as much as the position fix — cancel
+  // the velocity driving the two apart's opposite, i.e. driving them
+  // together, along that same normal. Position-only correction fixes the
+  // symptom for an instant, but a sustained force (the drag spring above,
+  // most obviously) just recreates the same overlap the very next
+  // substep if the velocity causing it is left untouched; this is what
+  // actually stops a dragged letter from parking itself inside a
+  // neighbor forever. Repeated several times so a chain of mutually
+  // touching letters (or a letter pinned between two others) fully
+  // settles within this one substep.
+  for (let iter = 0; iter < COLLISION_ITERATIONS; iter++) {
+    for (const letter of letters) {
+      const r = letter.nodeRadius
+      for (const n of letter.outer) {
+        resolveWallPosition(n, r - n.x, 1, 0)
+        resolveWallPosition(n, n.x - (containerWidth - r), -1, 0)
+        resolveWallPosition(n, r - n.y, 0, 1)
+        resolveWallPosition(n, n.y - (containerHeight - r), 0, -1)
+      }
+    }
+    for (let p = 0; p < candidatePairsA.length; p++) {
+      const a = candidatePairsA[p]
+      const b = candidatePairsB[p]
+      const sumR = a.nodeRadius + b.nodeRadius
+      const sumR2 = sumR * sumR
+
+      let maxOverlap = 0
+      for (const na of a.outer) {
+        for (const nb of b.outer) {
+          const dx = nb.x - na.x
+          const dy = nb.y - na.y
+          // Cheap reject before the sqrt below — the overwhelming majority
+          // of node pairs, most iterations, aren't remotely close.
+          if (dx * dx + dy * dy > sumR2) continue
+          const dist = Math.hypot(dx, dy) || 0.0001
+          const overlap = sumR - dist
+          if (overlap <= 0) continue
+          const push = overlap / 2
+          const nx = dx / dist
+          const ny = dy / dist
+          na.x -= nx * push
+          na.y -= ny * push
+          nb.x += nx * push
+          nb.y += ny * push
+
+          const closing = (na.vx - nb.vx) * nx + (na.vy - nb.vy) * ny
+          if (closing > 0) {
+            const half = closing / 2
+            na.vx -= nx * half
+            na.vy -= ny * half
+            nb.vx += nx * half
+            nb.vy += ny * half
+          }
+
+          if (overlap > maxOverlap) maxOverlap = overlap
+        }
+      }
+      if (maxOverlap === 0) continue
+
+      // Whole-body nudge: a per-node push above only moves the specific
+      // boundary points actually touching, which — if that's a small part
+      // of the letter's boundary — barely shifts its average position.
+      // Its own shape-matching spring, which only cares about staying
+      // internally undistorted and knows nothing about neighbors, then
+      // pulls those same points right back the next substep, and the
+      // letter never makes net progress out of the way. This instead
+      // moves *every* node of both letters, along the line between their
+      // current centroids (not an average of individual push vectors,
+      // which can partly cancel when two letters are interlocked from
+      // several directions at once) — real body movement shape-matching
+      // can't undo, which is what actually breaks a multi-letter jam
+      // instead of just fighting it in place forever.
+      let acx = 0
+      let acy = 0
+      for (const n of a.outer) {
+        acx += n.x
+        acy += n.y
+      }
+      acx /= a.outer.length
+      acy /= a.outer.length
+      let bcx = 0
+      let bcy = 0
+      for (const n of b.outer) {
+        bcx += n.x
+        bcy += n.y
+      }
+      bcx /= b.outer.length
+      bcy /= b.outer.length
+
+      const cdx = bcx - acx
+      const cdy = bcy - acy
+      const cdist = Math.hypot(cdx, cdy) || 0.0001
+      const cnx = cdx / cdist
+      const cny = cdy / cdist
+      const nudgeMag = (maxOverlap / 2) * WHOLE_BODY_NUDGE_FRACTION
+      const nudgeX = cnx * nudgeMag
+      const nudgeY = cny * nudgeMag
+      for (const n of a.outer) {
+        n.x -= nudgeX
+        n.y -= nudgeY
+      }
+      for (const n of b.outer) {
+        n.x += nudgeX
+        n.y += nudgeY
       }
     }
   }
 }
 
-function resolveWall(
+function resolveWallVelocity(
   n: { x: number; y: number; vx: number; vy: number },
-  tolerance: number,
   penetration: number,
   nx: number,
   ny: number,
@@ -458,11 +631,22 @@ function resolveWall(
     n.vx += nx * damp
     n.vy += ny * damp
   }
+}
 
-  const excess = penetration - tolerance
-  if (excess > 0) {
-    n.x += nx * excess
-    n.y += ny * excess
+function resolveWallPosition(
+  n: { x: number; y: number; vx: number; vy: number },
+  penetration: number,
+  nx: number,
+  ny: number,
+): void {
+  if (penetration <= 0) return
+  n.x += nx * penetration
+  n.y += ny * penetration
+
+  const into = -(n.vx * nx + n.vy * ny)
+  if (into > 0) {
+    n.vx += nx * into
+    n.vy += ny * into
   }
 }
 
